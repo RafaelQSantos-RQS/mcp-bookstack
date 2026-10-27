@@ -1,7 +1,9 @@
 use crate::config::Config;
 use crate::models::{
-    BookDetails, BookListItem, ChapterDetails, ChapterListItem, ListResponse, PageDetails,
-    SearchResponse, ShelfDetails, ShelfListItem,
+    BookDetails, BookListItem, ChapterDetails, ChapterListItem, CreateBookPayload,
+    CreateChapterPayload, CreatePagePayload, CreateShelfPayload, ListResponse, PageDetails,
+    SearchResponse, ShelfDetails, ShelfListItem, UpdateBookPayload, UpdateChapterPayload,
+    UpdatePagePayload, UpdateShelfPayload,
 };
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
@@ -12,6 +14,7 @@ pub struct BookStackClient {
     pub client: Client,
     pub base_url: String,
     pub auth_header: String,
+    pub allow_delete: bool,
 }
 
 impl BookStackClient {
@@ -21,6 +24,7 @@ impl BookStackClient {
             client: Client::new(),
             base_url: config.url.clone(),
             auth_header: config.auth_header(),
+            allow_delete: config.allow_delete,
         }
     }
 
@@ -30,6 +34,7 @@ impl BookStackClient {
             client,
             base_url: config.url.clone(),
             auth_header: config.auth_header(),
+            allow_delete: config.allow_delete,
         }
     }
 
@@ -355,5 +360,299 @@ impl BookStackClient {
             .await
             .with_context(|| format!("Failed to deserialize shelf {} details", id))?;
         Ok(shelf)
+    }
+
+    /// Create a new page.
+    /// Calls `POST {base_url}/api/pages`.
+    pub async fn create_page(&self, payload: &CreatePagePayload) -> Result<PageDetails> {
+        let resp = self
+            .client
+            .post(self.pages_url())
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .json(payload)
+            .send()
+            .await
+            .context("Failed to send create_page request")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Create page failed with status {}: {}", status, body);
+        }
+
+        let page = resp
+            .json::<PageDetails>()
+            .await
+            .context("Failed to deserialize created page details")?;
+        Ok(page)
+    }
+
+    /// Update an existing page.
+    /// Calls `PUT {base_url}/api/pages/{id}`.
+    pub async fn update_page(&self, id: u64, payload: &UpdatePagePayload) -> Result<PageDetails> {
+        let resp = self
+            .client
+            .put(self.page_url(id))
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .json(payload)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send update_page request for page {}", id))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Update page {} failed with status {}: {}", id, status, body);
+        }
+
+        let page = resp
+            .json::<PageDetails>()
+            .await
+            .with_context(|| format!("Failed to deserialize updated page {} details", id))?;
+        Ok(page)
+    }
+
+    /// Delete a page.
+    /// Calls `DELETE {base_url}/api/pages/{id}`.
+    pub async fn delete_page(&self, id: u64) -> Result<()> {
+        let resp = self
+            .client
+            .delete(self.page_url(id))
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send delete_page request for page {}", id))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Delete page {} failed with status {}: {}", id, status, body);
+        }
+
+        Ok(())
+    }
+
+    /// Create a new chapter.
+    /// Calls `POST {base_url}/api/chapters`.
+    pub async fn create_chapter(&self, payload: &CreateChapterPayload) -> Result<ChapterDetails> {
+        let resp = self
+            .client
+            .post(self.chapters_url())
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .json(payload)
+            .send()
+            .await
+            .context("Failed to send create_chapter request")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Create chapter failed with status {}: {}", status, body);
+        }
+
+        let chapter = resp
+            .json::<ChapterDetails>()
+            .await
+            .context("Failed to deserialize created chapter details")?;
+        Ok(chapter)
+    }
+
+    /// Update an existing chapter.
+    /// Calls `PUT {base_url}/api/chapters/{id}`.
+    pub async fn update_chapter(
+        &self,
+        id: u64,
+        payload: &UpdateChapterPayload,
+    ) -> Result<ChapterDetails> {
+        let resp = self
+            .client
+            .put(self.chapter_url(id))
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .json(payload)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send update_chapter request for chapter {}", id))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!(
+                "Update chapter {} failed with status {}: {}",
+                id,
+                status,
+                body
+            );
+        }
+
+        let chapter = resp
+            .json::<ChapterDetails>()
+            .await
+            .with_context(|| format!("Failed to deserialize updated chapter {} details", id))?;
+        Ok(chapter)
+    }
+
+    /// Delete a chapter.
+    /// Calls `DELETE {base_url}/api/chapters/{id}`.
+    pub async fn delete_chapter(&self, id: u64) -> Result<()> {
+        let resp = self
+            .client
+            .delete(self.chapter_url(id))
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send delete_chapter request for chapter {}", id))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!(
+                "Delete chapter {} failed with status {}: {}",
+                id,
+                status,
+                body
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Create a new book.
+    /// Calls `POST {base_url}/api/books`.
+    pub async fn create_book(&self, payload: &CreateBookPayload) -> Result<BookDetails> {
+        let resp = self
+            .client
+            .post(self.books_url())
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .json(payload)
+            .send()
+            .await
+            .context("Failed to send create_book request")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Create book failed with status {}: {}", status, body);
+        }
+
+        let book = resp
+            .json::<BookDetails>()
+            .await
+            .context("Failed to deserialize created book details")?;
+        Ok(book)
+    }
+
+    /// Update an existing book.
+    /// Calls `PUT {base_url}/api/books/{id}`.
+    pub async fn update_book(&self, id: u64, payload: &UpdateBookPayload) -> Result<BookDetails> {
+        let resp = self
+            .client
+            .put(self.book_url(id))
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .json(payload)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send update_book request for book {}", id))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Update book {} failed with status {}: {}", id, status, body);
+        }
+
+        let book = resp
+            .json::<BookDetails>()
+            .await
+            .with_context(|| format!("Failed to deserialize updated book {} details", id))?;
+        Ok(book)
+    }
+
+    /// Delete a book.
+    /// Calls `DELETE {base_url}/api/books/{id}`.
+    pub async fn delete_book(&self, id: u64) -> Result<()> {
+        let resp = self
+            .client
+            .delete(self.book_url(id))
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send delete_book request for book {}", id))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Delete book {} failed with status {}: {}", id, status, body);
+        }
+
+        Ok(())
+    }
+
+    /// Create a new shelf.
+    /// Calls `POST {base_url}/api/shelves`.
+    pub async fn create_shelf(&self, payload: &CreateShelfPayload) -> Result<ShelfDetails> {
+        let resp = self
+            .client
+            .post(self.shelves_url())
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .json(payload)
+            .send()
+            .await
+            .context("Failed to send create_shelf request")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Create shelf failed with status {}: {}", status, body);
+        }
+
+        let shelf = resp
+            .json::<ShelfDetails>()
+            .await
+            .context("Failed to deserialize created shelf details")?;
+        Ok(shelf)
+    }
+
+    /// Update an existing shelf.
+    /// Calls `PUT {base_url}/api/shelves/{id}`.
+    pub async fn update_shelf(&self, id: u64, payload: &UpdateShelfPayload) -> Result<ShelfDetails> {
+        let resp = self
+            .client
+            .put(self.shelf_url(id))
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .json(payload)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send update_shelf request for shelf {}", id))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Update shelf {} failed with status {}: {}", id, status, body);
+        }
+
+        let shelf = resp
+            .json::<ShelfDetails>()
+            .await
+            .with_context(|| format!("Failed to deserialize updated shelf {} details", id))?;
+        Ok(shelf)
+    }
+
+    /// Delete a shelf.
+    /// Calls `DELETE {base_url}/api/shelves/{id}`.
+    pub async fn delete_shelf(&self, id: u64) -> Result<()> {
+        let resp = self
+            .client
+            .delete(self.shelf_url(id))
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send delete_shelf request for shelf {}", id))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Delete shelf {} failed with status {}: {}", id, status, body);
+        }
+
+        Ok(())
     }
 }

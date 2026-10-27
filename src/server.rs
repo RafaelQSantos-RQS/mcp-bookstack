@@ -8,6 +8,10 @@ use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Serialize};
 
 use crate::client::BookStackClient;
+use crate::models::{
+    CreateBookPayload, CreateChapterPayload, CreatePagePayload, CreateShelfPayload, TagInput,
+    UpdateBookPayload, UpdateChapterPayload, UpdatePagePayload, UpdateShelfPayload,
+};
 
 /// Generates a schema with explicit `anyOf` branches (`[{"type": "integer"}, {"type": "null"}]`)
 /// instead of `type: ["integer", "null"]` for portable compatibility with all MCP clients and LLMs.
@@ -15,6 +19,58 @@ fn anyof_nullable_u32_schema(_gen: &mut SchemaGenerator) -> Schema {
     json_schema!({
         "anyOf": [
             { "type": "integer" },
+            { "type": "null" }
+        ]
+    })
+}
+
+fn anyof_nullable_u64_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "anyOf": [
+            { "type": "integer" },
+            { "type": "null" }
+        ]
+    })
+}
+
+fn anyof_nullable_i64_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "anyOf": [
+            { "type": "integer" },
+            { "type": "null" }
+        ]
+    })
+}
+
+fn anyof_nullable_string_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "anyOf": [
+            { "type": "string" },
+            { "type": "null" }
+        ]
+    })
+}
+
+fn anyof_nullable_tags_schema(generator: &mut SchemaGenerator) -> Schema {
+    let tag_schema = generator.subschema_for::<TagInput>();
+    json_schema!({
+        "anyOf": [
+            {
+                "type": "array",
+                "items": tag_schema
+            },
+            { "type": "null" }
+        ]
+    })
+}
+
+fn anyof_nullable_u64_vec_schema(_gen: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "anyOf": [
+            {
+                "type": "array",
+                "items": { "type": "integer" }
+            },
             { "type": "null" }
         ]
     })
@@ -42,6 +98,81 @@ pub struct ReadPageArgs {
     pub page_id: u64,
 }
 
+/// Arguments for `create_page` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreatePageArgs {
+    /// Name / title of the new page
+    pub name: String,
+    /// ID of the parent book (required if chapter_id is not specified)
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub book_id: Option<u64>,
+    /// ID of the parent chapter (required if book_id is not specified)
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub chapter_id: Option<u64>,
+    /// Page content formatted in Markdown (preferred)
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub markdown: Option<String>,
+    /// Page content formatted in HTML
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub html: Option<String>,
+    /// Optional priority order for sorting
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_i64_schema")]
+    pub priority: Option<i64>,
+    /// Optional tags to associate with the page
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_tags_schema")]
+    pub tags: Option<Vec<TagInput>>,
+}
+
+/// Arguments for `update_page` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdatePageArgs {
+    /// ID of the page to update
+    pub page_id: u64,
+    /// Optional new name / title for the page
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub name: Option<String>,
+    /// Optional new parent book ID
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub book_id: Option<u64>,
+    /// Optional new parent chapter ID
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub chapter_id: Option<u64>,
+    /// Updated page content formatted in Markdown
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub markdown: Option<String>,
+    /// Updated page content formatted in HTML
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub html: Option<String>,
+    /// Optional priority order for sorting
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_i64_schema")]
+    pub priority: Option<i64>,
+    /// Optional tags to associate with the page
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_tags_schema")]
+    pub tags: Option<Vec<TagInput>>,
+}
+
+/// Arguments for `delete_page` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeletePageArgs {
+    /// ID of the page to delete
+    pub page_id: u64,
+    /// Must be explicitly set to true to confirm deletion
+    pub confirm: bool,
+}
+
 /// Arguments for `list_books` tool.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ListBooksArgs {
@@ -62,6 +193,65 @@ pub struct GetBookDetailsArgs {
     pub book_id: u64,
 }
 
+/// Arguments for `create_book` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateBookArgs {
+    /// Name / title of the book
+    pub name: String,
+    /// Optional plain text description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description: Option<String>,
+    /// Optional HTML description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description_html: Option<String>,
+    /// Optional tags to associate with the book
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_tags_schema")]
+    pub tags: Option<Vec<TagInput>>,
+    /// Optional ID of a template page to use as default
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub default_template_id: Option<u64>,
+}
+
+/// Arguments for `update_book` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateBookArgs {
+    /// ID of the book to update
+    pub book_id: u64,
+    /// Optional new name / title for the book
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub name: Option<String>,
+    /// Optional plain text description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description: Option<String>,
+    /// Optional HTML description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description_html: Option<String>,
+    /// Optional tags to associate with the book
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_tags_schema")]
+    pub tags: Option<Vec<TagInput>>,
+    /// Optional ID of a template page to use as default
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub default_template_id: Option<u64>,
+}
+
+/// Arguments for `delete_book` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeleteBookArgs {
+    /// ID of the book to delete
+    pub book_id: u64,
+    /// Must be explicitly set to true to confirm deletion
+    pub confirm: bool,
+}
+
 /// Arguments for `list_shelves` tool.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ListShelvesArgs {
@@ -75,6 +265,65 @@ pub struct ListShelvesArgs {
     pub count: Option<u32>,
 }
 
+/// Arguments for `create_shelf` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateShelfArgs {
+    /// Name / title of the shelf
+    pub name: String,
+    /// Optional plain text description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description: Option<String>,
+    /// Optional HTML description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description_html: Option<String>,
+    /// Optional list of book IDs to include on this shelf
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_vec_schema")]
+    pub books: Option<Vec<u64>>,
+    /// Optional tags to associate with the shelf
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_tags_schema")]
+    pub tags: Option<Vec<TagInput>>,
+}
+
+/// Arguments for `update_shelf` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateShelfArgs {
+    /// ID of the shelf to update
+    pub shelf_id: u64,
+    /// Optional new name / title for the shelf
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub name: Option<String>,
+    /// Optional plain text description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description: Option<String>,
+    /// Optional HTML description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description_html: Option<String>,
+    /// Optional list of book IDs to set on this shelf
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_vec_schema")]
+    pub books: Option<Vec<u64>>,
+    /// Optional tags to associate with the shelf
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_tags_schema")]
+    pub tags: Option<Vec<TagInput>>,
+}
+
+/// Arguments for `delete_shelf` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeleteShelfArgs {
+    /// ID of the shelf to delete
+    pub shelf_id: u64,
+    /// Must be explicitly set to true to confirm deletion
+    pub confirm: bool,
+}
+
 /// Arguments for `read_chapter` tool.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ReadChapterArgs {
@@ -82,20 +331,129 @@ pub struct ReadChapterArgs {
     pub chapter_id: u64,
 }
 
+/// Arguments for `create_chapter` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateChapterArgs {
+    /// ID of the parent book
+    pub book_id: u64,
+    /// Name of the chapter
+    pub name: String,
+    /// Optional plain text description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description: Option<String>,
+    /// Optional HTML description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description_html: Option<String>,
+    /// Optional priority order for sorting
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_i64_schema")]
+    pub priority: Option<i64>,
+    /// Optional tags to associate with the chapter
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_tags_schema")]
+    pub tags: Option<Vec<TagInput>>,
+    /// Optional ID of a template page to use as default for pages in this chapter
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub default_template_id: Option<u64>,
+}
+
+/// Arguments for `update_chapter` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateChapterArgs {
+    /// ID of the chapter to update
+    pub chapter_id: u64,
+    /// Optional new parent book ID
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub book_id: Option<u64>,
+    /// Optional new name for the chapter
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub name: Option<String>,
+    /// Optional plain text description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description: Option<String>,
+    /// Optional HTML description
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub description_html: Option<String>,
+    /// Optional priority order for sorting
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_i64_schema")]
+    pub priority: Option<i64>,
+    /// Optional tags to associate with the chapter
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_tags_schema")]
+    pub tags: Option<Vec<TagInput>>,
+    /// Optional ID of a template page to use as default
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub default_template_id: Option<u64>,
+}
+
+/// Arguments for `delete_chapter` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeleteChapterArgs {
+    /// ID of the chapter to delete
+    pub chapter_id: u64,
+    /// Must be explicitly set to true to confirm deletion
+    pub confirm: bool,
+}
+
 /// MCP Server implementation for BookStack.
 #[derive(Clone)]
 pub struct BookStackServer {
     pub client: Arc<BookStackClient>,
     pub tool_router: ToolRouter<Self>,
+    pub allow_delete: bool,
 }
 
 impl BookStackServer {
     /// Creates a new `BookStackServer` wrapping the given client.
     pub fn new(client: Arc<BookStackClient>) -> Self {
+        let allow_delete = client.allow_delete;
         Self {
             client,
             tool_router: Self::tool_router(),
+            allow_delete,
         }
+    }
+
+    /// Builder method to override deletion permission.
+    pub fn with_allow_delete(mut self, allow_delete: bool) -> Self {
+        self.allow_delete = allow_delete;
+        self
+    }
+
+    /// Validates deletion preconditions (both global server permission and explicit confirm flag).
+    fn check_deletion_permission(
+        &self,
+        entity_type: &str,
+        id: u64,
+        confirm: bool,
+    ) -> Result<(), rmcp::ErrorData> {
+        if !self.allow_delete {
+            return Err(rmcp::ErrorData::invalid_params(
+                "Deletions are disabled on this server. Set BOOKSTACK_ALLOW_DELETE=true in the server environment to enable deletion tools.".to_string(),
+                None,
+            ));
+        }
+
+        if !confirm {
+            return Err(rmcp::ErrorData::invalid_params(
+                format!(
+                    "Deletion of {} {} aborted: 'confirm' must be explicitly set to true.",
+                    entity_type, id
+                ),
+                None,
+            ));
+        }
+
+        Ok(())
     }
 }
 
@@ -346,6 +704,369 @@ impl BookStackServer {
         }
 
         Ok(out)
+    }
+
+    /// Create a new page in a book or chapter with Markdown or HTML content.
+    #[tool(
+        name = "create_page",
+        description = "Create a new page in BookStack within a book or chapter"
+    )]
+    pub async fn create_page(
+        &self,
+        params: Parameters<CreatePageArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        if args.book_id.is_none() && args.chapter_id.is_none() {
+            return Err(rmcp::ErrorData::invalid_params(
+                "Either book_id or chapter_id must be provided to create a page.",
+                None,
+            ));
+        }
+
+        let payload = CreatePagePayload {
+            name: args.name,
+            book_id: args.book_id,
+            chapter_id: args.chapter_id,
+            markdown: args.markdown,
+            html: args.html,
+            priority: args.priority,
+            tags: args.tags,
+        };
+
+        let page = self
+            .client
+            .create_page(&payload)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        let mut out = format!(
+            "# Page Created Successfully\n\n- **Name**: {}\n- **ID**: {}\n- **Slug**: `{}`\n",
+            page.name, page.id, page.slug
+        );
+        if let Some(bid) = page.book_id {
+            out.push_str(&format!("- **Book ID**: {}\n", bid));
+        }
+        if let Some(cid) = page.chapter_id {
+            out.push_str(&format!("- **Chapter ID**: {}\n", cid));
+        }
+
+        Ok(out)
+    }
+
+    /// Update an existing page's name, content, or metadata.
+    #[tool(
+        name = "update_page",
+        description = "Update an existing page's name, Markdown/HTML content, or location in BookStack"
+    )]
+    pub async fn update_page(
+        &self,
+        params: Parameters<UpdatePageArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let payload = UpdatePagePayload {
+            name: args.name,
+            book_id: args.book_id,
+            chapter_id: args.chapter_id,
+            markdown: args.markdown,
+            html: args.html,
+            priority: args.priority,
+            tags: args.tags,
+        };
+
+        let page = self
+            .client
+            .update_page(args.page_id, &payload)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        let mut out = format!(
+            "# Page Updated Successfully\n\n- **Name**: {}\n- **ID**: {}\n- **Slug**: `{}`\n",
+            page.name, page.id, page.slug
+        );
+        if let Some(bid) = page.book_id {
+            out.push_str(&format!("- **Book ID**: {}\n", bid));
+        }
+        if let Some(cid) = page.chapter_id {
+            out.push_str(&format!("- **Chapter ID**: {}\n", cid));
+        }
+
+        Ok(out)
+    }
+
+    /// Delete a page (moves it to the BookStack recycle bin). Requires confirmation.
+    #[tool(
+        name = "delete_page",
+        description = "Delete a page and send it to the BookStack recycle bin (requires confirm: true)"
+    )]
+    pub async fn delete_page(
+        &self,
+        params: Parameters<DeletePageArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        self.check_deletion_permission("page", args.page_id, args.confirm)?;
+
+        self.client
+            .delete_page(args.page_id)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Page Deleted Successfully\n\nPage ID {} has been deleted and moved to the recycle bin.\n",
+            args.page_id
+        ))
+    }
+
+    /// Create a new chapter within a book.
+    #[tool(
+        name = "create_chapter",
+        description = "Create a new chapter within a book in BookStack"
+    )]
+    pub async fn create_chapter(
+        &self,
+        params: Parameters<CreateChapterArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let payload = CreateChapterPayload {
+            book_id: args.book_id,
+            name: args.name,
+            description: args.description,
+            description_html: args.description_html,
+            priority: args.priority,
+            tags: args.tags,
+            default_template_id: args.default_template_id,
+        };
+
+        let chapter = self
+            .client
+            .create_chapter(&payload)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Chapter Created Successfully\n\n- **Name**: {}\n- **ID**: {}\n- **Book ID**: {}\n- **Slug**: `{}`\n",
+            chapter.name, chapter.id, chapter.book_id, chapter.slug
+        ))
+    }
+
+    /// Update an existing chapter's details.
+    #[tool(
+        name = "update_chapter",
+        description = "Update an existing chapter's name, description, or parent book in BookStack"
+    )]
+    pub async fn update_chapter(
+        &self,
+        params: Parameters<UpdateChapterArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let payload = UpdateChapterPayload {
+            book_id: args.book_id,
+            name: args.name,
+            description: args.description,
+            description_html: args.description_html,
+            priority: args.priority,
+            tags: args.tags,
+            default_template_id: args.default_template_id,
+        };
+
+        let chapter = self
+            .client
+            .update_chapter(args.chapter_id, &payload)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Chapter Updated Successfully\n\n- **Name**: {}\n- **ID**: {}\n- **Book ID**: {}\n- **Slug**: `{}`\n",
+            chapter.name, chapter.id, chapter.book_id, chapter.slug
+        ))
+    }
+
+    /// Delete a chapter (moves it to the BookStack recycle bin). Requires confirmation.
+    #[tool(
+        name = "delete_chapter",
+        description = "Delete a chapter and send it to the BookStack recycle bin (requires confirm: true)"
+    )]
+    pub async fn delete_chapter(
+        &self,
+        params: Parameters<DeleteChapterArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        self.check_deletion_permission("chapter", args.chapter_id, args.confirm)?;
+
+        self.client
+            .delete_chapter(args.chapter_id)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Chapter Deleted Successfully\n\nChapter ID {} has been deleted and moved to the recycle bin.\n",
+            args.chapter_id
+        ))
+    }
+
+    /// Create a new book.
+    #[tool(
+        name = "create_book",
+        description = "Create a new book in BookStack"
+    )]
+    pub async fn create_book(
+        &self,
+        params: Parameters<CreateBookArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let payload = CreateBookPayload {
+            name: args.name,
+            description: args.description,
+            description_html: args.description_html,
+            tags: args.tags,
+            default_template_id: args.default_template_id,
+        };
+
+        let book = self
+            .client
+            .create_book(&payload)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Book Created Successfully\n\n- **Name**: {}\n- **ID**: {}\n- **Slug**: `{}`\n",
+            book.name, book.id, book.slug
+        ))
+    }
+
+    /// Update an existing book's details.
+    #[tool(
+        name = "update_book",
+        description = "Update an existing book's name or description in BookStack"
+    )]
+    pub async fn update_book(
+        &self,
+        params: Parameters<UpdateBookArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let payload = UpdateBookPayload {
+            name: args.name,
+            description: args.description,
+            description_html: args.description_html,
+            tags: args.tags,
+            default_template_id: args.default_template_id,
+        };
+
+        let book = self
+            .client
+            .update_book(args.book_id, &payload)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Book Updated Successfully\n\n- **Name**: {}\n- **ID**: {}\n- **Slug**: `{}`\n",
+            book.name, book.id, book.slug
+        ))
+    }
+
+    /// Delete a book (moves it to the BookStack recycle bin). Requires confirmation.
+    #[tool(
+        name = "delete_book",
+        description = "Delete a book and send it to the BookStack recycle bin (requires confirm: true)"
+    )]
+    pub async fn delete_book(
+        &self,
+        params: Parameters<DeleteBookArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        self.check_deletion_permission("book", args.book_id, args.confirm)?;
+
+        self.client
+            .delete_book(args.book_id)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Book Deleted Successfully\n\nBook ID {} has been deleted and moved to the recycle bin.\n",
+            args.book_id
+        ))
+    }
+
+    /// Create a new bookshelf.
+    #[tool(
+        name = "create_shelf",
+        description = "Create a new bookshelf in BookStack"
+    )]
+    pub async fn create_shelf(
+        &self,
+        params: Parameters<CreateShelfArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let payload = CreateShelfPayload {
+            name: args.name,
+            description: args.description,
+            description_html: args.description_html,
+            books: args.books,
+            tags: args.tags,
+        };
+
+        let shelf = self
+            .client
+            .create_shelf(&payload)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Shelf Created Successfully\n\n- **Name**: {}\n- **ID**: {}\n- **Slug**: `{}`\n",
+            shelf.name, shelf.id, shelf.slug
+        ))
+    }
+
+    /// Update an existing bookshelf.
+    #[tool(
+        name = "update_shelf",
+        description = "Update an existing bookshelf's name, description, or assigned books in BookStack"
+    )]
+    pub async fn update_shelf(
+        &self,
+        params: Parameters<UpdateShelfArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let payload = UpdateShelfPayload {
+            name: args.name,
+            description: args.description,
+            description_html: args.description_html,
+            books: args.books,
+            tags: args.tags,
+        };
+
+        let shelf = self
+            .client
+            .update_shelf(args.shelf_id, &payload)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Shelf Updated Successfully\n\n- **Name**: {}\n- **ID**: {}\n- **Slug**: `{}`\n",
+            shelf.name, shelf.id, shelf.slug
+        ))
+    }
+
+    /// Delete a bookshelf (moves it to the BookStack recycle bin). Requires confirmation.
+    #[tool(
+        name = "delete_shelf",
+        description = "Delete a bookshelf and send it to the BookStack recycle bin (requires confirm: true)"
+    )]
+    pub async fn delete_shelf(
+        &self,
+        params: Parameters<DeleteShelfArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        self.check_deletion_permission("shelf", args.shelf_id, args.confirm)?;
+
+        self.client
+            .delete_shelf(args.shelf_id)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(format!(
+            "# Shelf Deleted Successfully\n\nShelf ID {} has been deleted and moved to the recycle bin.\n",
+            args.shelf_id
+        ))
     }
 }
 

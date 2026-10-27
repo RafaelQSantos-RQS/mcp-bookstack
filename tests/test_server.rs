@@ -27,7 +27,63 @@ async fn spawn_mock_bookstack() -> (String, tokio::task::JoinHandle<()>) {
                 let req_str = String::from_utf8_lossy(&buf[..n]);
                 let first_line = req_str.lines().next().unwrap_or("");
 
-                let (status, content_type, body) = if first_line.contains("/api/search") {
+                let (status, content_type, body) = if first_line.starts_with("POST /api/pages") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"id":42,"name":"New Page","slug":"new-page","book_id":10}"#,
+                    )
+                } else if first_line.starts_with("PUT /api/pages/42") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"id":42,"name":"Updated Page","slug":"updated-page","book_id":10}"#,
+                    )
+                } else if first_line.starts_with("DELETE /api/pages/42") {
+                    ("204 No Content", "text/plain", "")
+                } else if first_line.starts_with("POST /api/chapters") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"id":20,"book_id":10,"name":"New Chapter","slug":"new-chapter"}"#,
+                    )
+                } else if first_line.starts_with("PUT /api/chapters/20") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"id":20,"book_id":10,"name":"Updated Chapter","slug":"updated-chapter"}"#,
+                    )
+                } else if first_line.starts_with("DELETE /api/chapters/20") {
+                    ("204 No Content", "text/plain", "")
+                } else if first_line.starts_with("POST /api/books") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"id":10,"name":"New Book","slug":"new-book"}"#,
+                    )
+                } else if first_line.starts_with("PUT /api/books/10") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"id":10,"name":"Updated Book","slug":"updated-book"}"#,
+                    )
+                } else if first_line.starts_with("DELETE /api/books/10") {
+                    ("204 No Content", "text/plain", "")
+                } else if first_line.starts_with("POST /api/shelves") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"id":5,"name":"New Shelf","slug":"new-shelf"}"#,
+                    )
+                } else if first_line.starts_with("PUT /api/shelves/5") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"id":5,"name":"Updated Shelf","slug":"updated-shelf"}"#,
+                    )
+                } else if first_line.starts_with("DELETE /api/shelves/5") {
+                    ("204 No Content", "text/plain", "")
+                } else if first_line.contains("/api/search") {
                     (
                         "200 OK",
                         "application/json",
@@ -96,15 +152,33 @@ async fn test_server_tool_definitions() {
     let server = BookStackServer::new(client);
 
     let tools = server.tool_router.list_all();
-    assert_eq!(tools.len(), 6);
+    assert_eq!(tools.len(), 18);
+
+    let expected_tools = [
+        "search_content",
+        "read_page",
+        "create_page",
+        "update_page",
+        "delete_page",
+        "list_books",
+        "get_book_details",
+        "create_book",
+        "update_book",
+        "delete_book",
+        "list_shelves",
+        "create_shelf",
+        "update_shelf",
+        "delete_shelf",
+        "read_chapter",
+        "create_chapter",
+        "update_chapter",
+        "delete_chapter",
+    ];
 
     let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
-    assert!(tool_names.contains(&"search_content"));
-    assert!(tool_names.contains(&"read_page"));
-    assert!(tool_names.contains(&"list_books"));
-    assert!(tool_names.contains(&"get_book_details"));
-    assert!(tool_names.contains(&"list_shelves"));
-    assert!(tool_names.contains(&"read_chapter"));
+    for expected in expected_tools {
+        assert!(tool_names.contains(&expected), "Missing tool: {}", expected);
+    }
 
     for tool in &tools {
         assert!(
@@ -114,7 +188,7 @@ async fn test_server_tool_definitions() {
         );
     }
 
-    // Verify list_books, list_shelves and search_content use anyOf for optional integer parameters (portable JSON Schema)
+    // Verify tools use anyOf for optional parameters (portable JSON Schema)
     for tool_name in ["list_books", "list_shelves", "search_content"] {
         let tool = tools.iter().find(|t| t.name == tool_name).unwrap();
         let schema_json = serde_json::to_value(&tool.input_schema).unwrap();
@@ -133,6 +207,25 @@ async fn test_server_tool_definitions() {
             count_prop
         );
     }
+
+    // Verify write tools use anyOf for nullable parameters
+    let create_page_tool = tools.iter().find(|t| t.name == "create_page").unwrap();
+    let cp_schema = serde_json::to_value(&create_page_tool.input_schema).unwrap();
+    assert!(cp_schema["properties"]["book_id"].get("anyOf").is_some());
+    assert!(cp_schema["properties"]["markdown"].get("anyOf").is_some());
+    assert!(cp_schema["properties"]["tags"].get("anyOf").is_some());
+
+    let create_shelf_tool = tools.iter().find(|t| t.name == "create_shelf").unwrap();
+    let cs_schema = serde_json::to_value(&create_shelf_tool.input_schema).unwrap();
+    assert!(cs_schema["properties"]["books"].get("anyOf").is_some());
+
+    // Verify TagInput.order uses anyOf for portable schema
+    let tag_order = &cp_schema["$defs"]["TagInput"]["properties"]["order"];
+    assert!(
+        tag_order.get("anyOf").is_some(),
+        "Expected anyOf in TagInput.order schema, got: {:?}",
+        tag_order
+    );
 }
 
 #[tokio::test]
@@ -203,6 +296,210 @@ async fn test_tools_execution_with_mock_bookstack() {
         .expect("read_chapter failed");
     assert!(chapter_res.contains("Concurrency"));
     assert!(chapter_res.contains("Rust Guide"));
+}
+
+#[tokio::test]
+async fn test_write_tools_execution_and_safety_guards() {
+    let (base_url, _handle) = spawn_mock_bookstack().await;
+    let config = Config::new(base_url, "test_token_id", "test_token_secret").unwrap();
+    let client = Arc::new(BookStackClient::new(&config));
+
+    // Server with allow_delete = false (default)
+    let server = BookStackServer::new(client.clone());
+
+    use mcp_bookstack::server::{
+        CreateBookArgs, CreateChapterArgs, CreatePageArgs, CreateShelfArgs, DeleteBookArgs,
+        DeleteChapterArgs, DeletePageArgs, DeleteShelfArgs, UpdateBookArgs, UpdateChapterArgs,
+        UpdatePageArgs, UpdateShelfArgs,
+    };
+
+    // Test create_page validation (requires book_id or chapter_id)
+    let invalid_create = server
+        .create_page(Parameters(CreatePageArgs {
+            name: "Invalid".to_string(),
+            book_id: None,
+            chapter_id: None,
+            markdown: Some("# Hi".to_string()),
+            html: None,
+            priority: None,
+            tags: None,
+        }))
+        .await;
+    assert!(invalid_create.is_err());
+
+    // Test create_page success
+    let page_res = server
+        .create_page(Parameters(CreatePageArgs {
+            name: "New Page".to_string(),
+            book_id: Some(10),
+            chapter_id: None,
+            markdown: Some("# Hi".to_string()),
+            html: None,
+            priority: None,
+            tags: None,
+        }))
+        .await
+        .expect("create_page failed");
+    assert!(page_res.contains("# Page Created Successfully"));
+    assert!(page_res.contains("**ID**: 42"));
+
+    // Test update_page success
+    let update_res = server
+        .update_page(Parameters(UpdatePageArgs {
+            page_id: 42,
+            name: Some("Updated Page".to_string()),
+            book_id: None,
+            chapter_id: None,
+            markdown: None,
+            html: None,
+            priority: None,
+            tags: None,
+        }))
+        .await
+        .expect("update_page failed");
+    assert!(update_res.contains("# Page Updated Successfully"));
+
+    // Test delete_page guarded by allow_delete = false
+    let delete_denied = server
+        .delete_page(Parameters(DeletePageArgs {
+            page_id: 42,
+            confirm: true,
+        }))
+        .await;
+    let err_str = delete_denied.unwrap_err().message;
+    assert!(err_str.contains("Deletions are disabled on this server"));
+
+    // Server with allow_delete = true
+    let server_with_delete = BookStackServer::new(client).with_allow_delete(true);
+
+    // Test delete without confirm flag
+    let delete_unconfirmed = server_with_delete
+        .delete_page(Parameters(DeletePageArgs {
+            page_id: 42,
+            confirm: false,
+        }))
+        .await;
+    let err_unconf = delete_unconfirmed.unwrap_err().message;
+    assert!(err_unconf.contains("'confirm' must be explicitly set to true"));
+
+    // Test delete with confirm: true
+    let delete_ok = server_with_delete
+        .delete_page(Parameters(DeletePageArgs {
+            page_id: 42,
+            confirm: true,
+        }))
+        .await
+        .expect("delete_page failed");
+    assert!(delete_ok.contains("# Page Deleted Successfully"));
+
+    // Test chapters
+    let ch_res = server_with_delete
+        .create_chapter(Parameters(CreateChapterArgs {
+            book_id: 10,
+            name: "New Chapter".to_string(),
+            description: None,
+            description_html: None,
+            priority: None,
+            tags: None,
+            default_template_id: None,
+        }))
+        .await
+        .expect("create_chapter failed");
+    assert!(ch_res.contains("# Chapter Created Successfully"));
+
+    let ch_up_res = server_with_delete
+        .update_chapter(Parameters(UpdateChapterArgs {
+            chapter_id: 20,
+            book_id: None,
+            name: Some("Updated Chapter".to_string()),
+            description: None,
+            description_html: None,
+            priority: None,
+            tags: None,
+            default_template_id: None,
+        }))
+        .await
+        .expect("update_chapter failed");
+    assert!(ch_up_res.contains("# Chapter Updated Successfully"));
+
+    let ch_del_res = server_with_delete
+        .delete_chapter(Parameters(DeleteChapterArgs {
+            chapter_id: 20,
+            confirm: true,
+        }))
+        .await
+        .expect("delete_chapter failed");
+    assert!(ch_del_res.contains("# Chapter Deleted Successfully"));
+
+    // Test books
+    let b_res = server_with_delete
+        .create_book(Parameters(CreateBookArgs {
+            name: "New Book".to_string(),
+            description: None,
+            description_html: None,
+            tags: None,
+            default_template_id: None,
+        }))
+        .await
+        .expect("create_book failed");
+    assert!(b_res.contains("# Book Created Successfully"));
+
+    let b_up_res = server_with_delete
+        .update_book(Parameters(UpdateBookArgs {
+            book_id: 10,
+            name: Some("Updated Book".to_string()),
+            description: None,
+            description_html: None,
+            tags: None,
+            default_template_id: None,
+        }))
+        .await
+        .expect("update_book failed");
+    assert!(b_up_res.contains("# Book Updated Successfully"));
+
+    let b_del_res = server_with_delete
+        .delete_book(Parameters(DeleteBookArgs {
+            book_id: 10,
+            confirm: true,
+        }))
+        .await
+        .expect("delete_book failed");
+    assert!(b_del_res.contains("# Book Deleted Successfully"));
+
+    // Test shelves
+    let s_res = server_with_delete
+        .create_shelf(Parameters(CreateShelfArgs {
+            name: "New Shelf".to_string(),
+            description: None,
+            description_html: None,
+            books: Some(vec![10]),
+            tags: None,
+        }))
+        .await
+        .expect("create_shelf failed");
+    assert!(s_res.contains("# Shelf Created Successfully"));
+
+    let s_up_res = server_with_delete
+        .update_shelf(Parameters(UpdateShelfArgs {
+            shelf_id: 5,
+            name: Some("Updated Shelf".to_string()),
+            description: None,
+            description_html: None,
+            books: None,
+            tags: None,
+        }))
+        .await
+        .expect("update_shelf failed");
+    assert!(s_up_res.contains("# Shelf Updated Successfully"));
+
+    let s_del_res = server_with_delete
+        .delete_shelf(Parameters(DeleteShelfArgs {
+            shelf_id: 5,
+            confirm: true,
+        }))
+        .await
+        .expect("delete_shelf failed");
+    assert!(s_del_res.contains("# Shelf Deleted Successfully"));
 }
 
 #[tokio::test]
@@ -279,7 +576,7 @@ async fn test_main_binary_stdio_initialize() -> anyhow::Result<()> {
 
     assert_eq!(list_resp["id"], 2);
     let tools = list_resp["result"]["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 6);
+    assert_eq!(tools.len(), 18);
 
     let tool_names: Vec<&str> = tools
         .iter()
@@ -287,10 +584,22 @@ async fn test_main_binary_stdio_initialize() -> anyhow::Result<()> {
         .collect();
     assert!(tool_names.contains(&"search_content"));
     assert!(tool_names.contains(&"read_page"));
+    assert!(tool_names.contains(&"create_page"));
+    assert!(tool_names.contains(&"update_page"));
+    assert!(tool_names.contains(&"delete_page"));
     assert!(tool_names.contains(&"list_books"));
     assert!(tool_names.contains(&"get_book_details"));
+    assert!(tool_names.contains(&"create_book"));
+    assert!(tool_names.contains(&"update_book"));
+    assert!(tool_names.contains(&"delete_book"));
     assert!(tool_names.contains(&"list_shelves"));
+    assert!(tool_names.contains(&"create_shelf"));
+    assert!(tool_names.contains(&"update_shelf"));
+    assert!(tool_names.contains(&"delete_shelf"));
     assert!(tool_names.contains(&"read_chapter"));
+    assert!(tool_names.contains(&"create_chapter"));
+    assert!(tool_names.contains(&"update_chapter"));
+    assert!(tool_names.contains(&"delete_chapter"));
 
     // Send tools/call request for read_page
     let call_tool_req = serde_json::json!({

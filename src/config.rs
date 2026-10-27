@@ -5,6 +5,7 @@ pub struct Config {
     pub url: String,
     pub token_id: String,
     pub token_secret: String,
+    pub allow_delete: bool,
 }
 
 impl Config {
@@ -12,6 +13,7 @@ impl Config {
     /// - `BOOKSTACK_URL`
     /// - `BOOKSTACK_TOKEN_ID`
     /// - `BOOKSTACK_TOKEN_SECRET`
+    /// - `BOOKSTACK_ALLOW_DELETE` (optional, defaults to false)
     ///
     /// Automatically reads a `.env` file if present in the current working directory.
     pub fn from_env() -> Result<Self> {
@@ -24,12 +26,22 @@ impl Config {
         let token_secret = std::env::var("BOOKSTACK_TOKEN_SECRET")
             .context("BOOKSTACK_TOKEN_SECRET environment variable is required")?;
 
-        Self::new(url, token_id, token_secret)
+        let allow_delete = std::env::var("BOOKSTACK_ALLOW_DELETE")
+            .map(|v| {
+                let v = v.trim().to_lowercase();
+                v == "true" || v == "1" || v == "yes"
+            })
+            .unwrap_or(false);
+
+        let mut config = Self::new(url, token_id, token_secret)?;
+        config.allow_delete = allow_delete;
+        Ok(config)
     }
 
     /// Creates a new `Config`, validating that fields are non-empty,
     /// auto-prepending `https://` if protocol scheme is omitted,
     /// and stripping trailing slashes from the URL.
+    /// `allow_delete` defaults to `false`.
     pub fn new(
         url: impl Into<String>,
         token_id: impl Into<String>,
@@ -63,7 +75,14 @@ impl Config {
             url,
             token_id,
             token_secret,
+            allow_delete: false,
         })
+    }
+
+    /// Builder method to specify whether delete operations are permitted.
+    pub fn with_allow_delete(mut self, allow_delete: bool) -> Self {
+        self.allow_delete = allow_delete;
+        self
     }
 
     /// Formats the Authorization header value for this configuration.

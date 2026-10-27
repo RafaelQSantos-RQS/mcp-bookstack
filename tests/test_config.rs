@@ -77,8 +77,17 @@ fn test_from_env_success_and_failure() {
     assert_eq!(config.token_id, "token_123");
     assert_eq!(config.token_secret, "secret_456");
     assert_eq!(config.auth_header(), "Token token_123:secret_456");
+    assert!(!config.allow_delete);
+
+    // Test with BOOKSTACK_ALLOW_DELETE=true
+    unsafe {
+        std::env::set_var("BOOKSTACK_ALLOW_DELETE", "true");
+    }
+    let config_with_delete = Config::from_env().unwrap();
+    assert!(config_with_delete.allow_delete);
 
     unsafe {
+        std::env::remove_var("BOOKSTACK_ALLOW_DELETE");
         std::env::remove_var("BOOKSTACK_URL");
         std::env::remove_var("BOOKSTACK_TOKEN_ID");
         std::env::remove_var("BOOKSTACK_TOKEN_SECRET");
@@ -86,4 +95,15 @@ fn test_from_env_success_and_failure() {
 
     let err = Config::from_env().unwrap_err();
     assert!(err.to_string().contains("BOOKSTACK_URL"));
+}
+
+#[test]
+fn test_config_with_allow_delete_builder() {
+    let config = Config::new("https://example.com", "id", "secret")
+        .unwrap()
+        .with_allow_delete(true);
+    assert!(config.allow_delete);
+
+    let config_default = Config::new("https://example.com", "id", "secret").unwrap();
+    assert!(!config_default.allow_delete);
 }

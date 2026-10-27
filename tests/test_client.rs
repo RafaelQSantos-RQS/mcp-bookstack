@@ -1,3 +1,4 @@
+use mcp_bookstack::models::*;
 use mcp_bookstack::{BookStackClient, Config};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -13,6 +14,7 @@ fn test_client_header_and_url_construction() {
 
     assert_eq!(client.base_url, "https://bookstack.test");
     assert_eq!(client.auth_header, "Token token-id:token-secret");
+    assert!(!client.allow_delete);
 
     assert_eq!(client.search_url(), "https://bookstack.test/api/search");
     assert_eq!(client.books_url(), "https://bookstack.test/api/books");
@@ -268,4 +270,200 @@ async fn test_search_and_list_endpoints() {
 
     let shelf = client.get_shelf(30).await.unwrap();
     assert_eq!(shelf.id, 30);
+}
+
+#[tokio::test]
+async fn test_client_mutation_methods() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server_url = format!("http://127.0.0.1:{}", port);
+
+    let config = Config::new(&server_url, "test_id", "test_sec").unwrap();
+    let client = BookStackClient::new(&config);
+
+    tokio::spawn(async move {
+        // Helper to serve responses
+        async fn handle_req(socket: &mut tokio::net::TcpStream, status: &str, body: &str) {
+            let mut buf = [0u8; 4096];
+            let _ = socket.read(&mut buf).await.unwrap();
+            let response = format!(
+                "HTTP/1.1 {}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                status,
+                body.len(),
+                body
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            let _ = socket.shutdown().await;
+        }
+
+        // 1. POST /api/pages
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "200 OK", r#"{"id":42,"name":"New Page","slug":"new-page","book_id":10}"#).await;
+
+        // 2. PUT /api/pages/42
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "200 OK", r#"{"id":42,"name":"Updated Page","slug":"updated-page","book_id":10}"#).await;
+
+        // 3. DELETE /api/pages/42
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "204 No Content", "").await;
+
+        // 4. POST /api/chapters
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "200 OK", r#"{"id":20,"book_id":10,"name":"New Chapter","slug":"new-chapter"}"#).await;
+
+        // 5. PUT /api/chapters/20
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "200 OK", r#"{"id":20,"book_id":10,"name":"Updated Chapter","slug":"updated-chapter"}"#).await;
+
+        // 6. DELETE /api/chapters/20
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "204 No Content", "").await;
+
+        // 7. POST /api/books
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "200 OK", r#"{"id":10,"name":"New Book","slug":"new-book"}"#).await;
+
+        // 8. PUT /api/books/10
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "200 OK", r#"{"id":10,"name":"Updated Book","slug":"updated-book"}"#).await;
+
+        // 9. DELETE /api/books/10
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "204 No Content", "").await;
+
+        // 10. POST /api/shelves
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "200 OK", r#"{"id":30,"name":"New Shelf","slug":"new-shelf"}"#).await;
+
+        // 11. PUT /api/shelves/30
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "200 OK", r#"{"id":30,"name":"Updated Shelf","slug":"updated-shelf"}"#).await;
+
+        // 12. DELETE /api/shelves/30
+        let (mut socket, _) = listener.accept().await.unwrap();
+        handle_req(&mut socket, "204 No Content", "").await;
+    });
+
+    // 1. create_page
+    let new_page = client
+        .create_page(&CreatePagePayload {
+            name: "New Page".to_string(),
+            book_id: Some(10),
+            chapter_id: None,
+            markdown: Some("# Hello".to_string()),
+            html: None,
+            priority: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(new_page.id, 42);
+    assert_eq!(new_page.name, "New Page");
+
+    // 2. update_page
+    let updated_page = client
+        .update_page(
+            42,
+            &UpdatePagePayload {
+                name: Some("Updated Page".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated_page.id, 42);
+    assert_eq!(updated_page.name, "Updated Page");
+
+    // 3. delete_page
+    client.delete_page(42).await.unwrap();
+
+    // 4. create_chapter
+    let new_chapter = client
+        .create_chapter(&CreateChapterPayload {
+            book_id: 10,
+            name: "New Chapter".to_string(),
+            description: None,
+            description_html: None,
+            priority: None,
+            tags: None,
+            default_template_id: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(new_chapter.id, 20);
+
+    // 5. update_chapter
+    let updated_chapter = client
+        .update_chapter(
+            20,
+            &UpdateChapterPayload {
+                name: Some("Updated Chapter".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated_chapter.id, 20);
+
+    // 6. delete_chapter
+    client.delete_chapter(20).await.unwrap();
+
+    // 7. create_book
+    let new_book = client
+        .create_book(&CreateBookPayload {
+            name: "New Book".to_string(),
+            description: None,
+            description_html: None,
+            tags: None,
+            default_template_id: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(new_book.id, 10);
+
+    // 8. update_book
+    let updated_book = client
+        .update_book(
+            10,
+            &UpdateBookPayload {
+                name: Some("Updated Book".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated_book.id, 10);
+
+    // 9. delete_book
+    client.delete_book(10).await.unwrap();
+
+    // 10. create_shelf
+    let new_shelf = client
+        .create_shelf(&CreateShelfPayload {
+            name: "New Shelf".to_string(),
+            description: None,
+            description_html: None,
+            books: Some(vec![10]),
+            tags: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(new_shelf.id, 30);
+
+    // 11. update_shelf
+    let updated_shelf = client
+        .update_shelf(
+            30,
+            &UpdateShelfPayload {
+                name: Some("Updated Shelf".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated_shelf.id, 30);
+
+    // 12. delete_shelf
+    client.delete_shelf(30).await.unwrap();
 }

@@ -1,4 +1,14 @@
+use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Serialize};
+
+fn anyof_nullable_u64_schema(_generator: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "anyOf": [
+            { "type": "integer" },
+            { "type": "null" }
+        ]
+    })
+}
 
 /// Generic list response envelope used by BookStack API endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -295,4 +305,161 @@ pub struct ShelfDetails {
     pub cover: Option<serde_json::Value>,
     #[serde(default)]
     pub books: Option<Vec<BookListItem>>,
+}
+
+/// Tag input for entity creation and updates.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct TagInput {
+    pub name: String,
+    #[serde(default)]
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    pub order: Option<u64>,
+}
+
+impl TagInput {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+            order: None,
+        }
+    }
+
+    pub fn with_order(mut self, order: u64) -> Self {
+        self.order = Some(order);
+        self
+    }
+}
+
+/// Payload for creating a page (`POST /api/pages`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreatePagePayload {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub book_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chapter_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<TagInput>>,
+}
+
+/// Payload for updating a page (`PUT /api/pages/{id}`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdatePagePayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub book_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chapter_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<TagInput>>,
+}
+
+/// Payload for creating a chapter (`POST /api/chapters`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateChapterPayload {
+    pub book_id: u64,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<TagInput>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_template_id: Option<u64>,
+}
+
+/// Payload for updating a chapter (`PUT /api/chapters/{id}`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateChapterPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub book_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<TagInput>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_template_id: Option<u64>,
+}
+
+/// Payload for creating a book (`POST /api/books`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateBookPayload {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<TagInput>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_template_id: Option<u64>,
+}
+
+/// Payload for updating a book (`PUT /api/books/{id}`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateBookPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<TagInput>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_template_id: Option<u64>,
+}
+
+/// Payload for creating a shelf (`POST /api/shelves`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateShelfPayload {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub books: Option<Vec<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<TagInput>>,
+}
+
+/// Payload for updating a shelf (`PUT /api/shelves/{id}`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateShelfPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub books: Option<Vec<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<TagInput>>,
 }

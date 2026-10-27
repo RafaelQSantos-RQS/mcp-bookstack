@@ -291,3 +291,76 @@ fn test_deserialize_all_docs_json_examples() {
         }
     }
 }
+
+#[test]
+fn test_mutation_payloads_serialization() {
+    let tag = TagInput::new("Category", "Dev").with_order(1);
+    assert_eq!(tag.name, "Category");
+    assert_eq!(tag.value, "Dev");
+    assert_eq!(tag.order, Some(1));
+
+    // Page creation payload
+    let page_payload = CreatePagePayload {
+        name: "New Page".to_string(),
+        book_id: Some(10),
+        chapter_id: None,
+        markdown: Some("# Header\n\nContent".to_string()),
+        html: None,
+        priority: Some(5),
+        tags: Some(vec![tag.clone()]),
+    };
+    let json_val = serde_json::to_value(&page_payload).unwrap();
+    assert_eq!(json_val["name"], "New Page");
+    assert_eq!(json_val["book_id"], 10);
+    assert!(json_val.get("chapter_id").is_none());
+    assert_eq!(json_val["markdown"], "# Header\n\nContent");
+    assert_eq!(json_val["tags"][0]["name"], "Category");
+
+    // Page update payload
+    let page_update = UpdatePagePayload {
+        name: Some("Updated Name".to_string()),
+        markdown: Some("Updated Content".to_string()),
+        ..Default::default()
+    };
+    let json_update = serde_json::to_value(&page_update).unwrap();
+    assert_eq!(json_update["name"], "Updated Name");
+    assert_eq!(json_update["markdown"], "Updated Content");
+    assert!(json_update.get("book_id").is_none());
+
+    // Chapter payloads
+    let chapter_payload = CreateChapterPayload {
+        book_id: 10,
+        name: "Chapter 1".to_string(),
+        description: Some("Description".to_string()),
+        description_html: None,
+        priority: Some(1),
+        tags: Some(vec![tag.clone()]),
+        default_template_id: None,
+    };
+    let json_ch = serde_json::to_value(&chapter_payload).unwrap();
+    assert_eq!(json_ch["book_id"], 10);
+    assert_eq!(json_ch["name"], "Chapter 1");
+
+    // Book payloads
+    let book_payload = CreateBookPayload {
+        name: "Rust In Action".to_string(),
+        description: Some("A book about Rust".to_string()),
+        description_html: None,
+        tags: None,
+        default_template_id: None,
+    };
+    let json_b = serde_json::to_value(&book_payload).unwrap();
+    assert_eq!(json_b["name"], "Rust In Action");
+
+    // Shelf payloads
+    let shelf_payload = CreateShelfPayload {
+        name: "Backend Shelf".to_string(),
+        description: Some("Books for backend engineering".to_string()),
+        description_html: None,
+        books: Some(vec![1, 2, 3]),
+        tags: None,
+    };
+    let json_s = serde_json::to_value(&shelf_payload).unwrap();
+    assert_eq!(json_s["name"], "Backend Shelf");
+    assert_eq!(json_s["books"], serde_json::json!([1, 2, 3]));
+}
