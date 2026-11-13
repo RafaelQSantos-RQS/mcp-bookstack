@@ -166,9 +166,76 @@ The server is configured via environment variables (which can also be placed in 
 
 ---
 
-## Client Integration
+## Installation & How-To Guide
 
-### 1. Claude Desktop
+You do **not** need a Rust development environment to use `mcp-bookstack`. Precompiled, standalone binaries are built and published for each release.
+
+### Step 1: Download the Precompiled Binary
+
+Download the archive for your operating system and architecture from the [GitHub Releases](https://github.com/RafaelQSantos-RQS/mcp-bookstack/releases/latest):
+
+| Platform | Architecture | Archive Asset |
+|:---|:---|:---|
+| **Linux** | `x86_64` | `mcp-bookstack-linux-x86_64.tar.gz` |
+| **macOS** | Apple Silicon (`arm64` - M1/M2/M3/M4) | `mcp-bookstack-macos-arm64.tar.gz` |
+| **Windows** | `x86_64` | `mcp-bookstack-windows-x86_64.zip` |
+
+#### Quick Install via Terminal
+
+**Linux (`x86_64`):**
+```bash
+# Download and unpack
+curl -sL https://github.com/RafaelQSantos-RQS/mcp-bookstack/releases/latest/download/mcp-bookstack-linux-x86_64.tar.gz | tar -xz
+
+# Make executable and move to PATH (optional)
+chmod +x mcp-bookstack
+sudo mv mcp-bookstack /usr/local/bin/
+```
+
+**macOS (Apple Silicon `arm64`):**
+```bash
+# Download and unpack
+curl -sL https://github.com/RafaelQSantos-RQS/mcp-bookstack/releases/latest/download/mcp-bookstack-macos-arm64.tar.gz | tar -xz
+
+# Make executable and move to PATH (optional)
+chmod +x mcp-bookstack
+sudo mv mcp-bookstack /usr/local/bin/
+```
+
+**Windows (PowerShell):**
+```powershell
+# Download and unpack into your user bin folder
+Invoke-WebRequest -Uri "https://github.com/RafaelQSantos-RQS/mcp-bookstack/releases/latest/download/mcp-bookstack-windows-x86_64.zip" -OutFile "$env:TEMP\mcp-bookstack.zip"
+Expand-Archive -Path "$env:TEMP\mcp-bookstack.zip" -DestinationPath "$HOME\bin" -Force
+```
+
+---
+
+### Step 2: Configure in Your AI Agent / MCP Client
+
+Once the binary is placed on your system (e.g. `/usr/local/bin/mcp-bookstack` or `C:\Users\username\bin\mcp-bookstack.exe`), configure your agent:
+
+#### 1. AI Agents (`.agents` configuration)
+
+For agents using a project-level `.agents/mcp_config.json` or global `~/.agents/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "bookstack": {
+      "command": "/usr/local/bin/mcp-bookstack",
+      "env": {
+        "BOOKSTACK_URL": "https://wiki.example.com",
+        "BOOKSTACK_TOKEN_ID": "your_token_id_here",
+        "BOOKSTACK_TOKEN_SECRET": "your_token_secret_here",
+        "BOOKSTACK_ALLOW_DELETE": "false"
+      }
+    }
+  }
+}
+```
+
+#### 2. Claude Desktop
 
 Add the server to your `claude_desktop_config.json`:
 
@@ -180,7 +247,7 @@ Add the server to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "bookstack": {
-      "command": "/absolute/path/to/mcp-bookstack",
+      "command": "/usr/local/bin/mcp-bookstack",
       "env": {
         "BOOKSTACK_URL": "https://wiki.example.com",
         "BOOKSTACK_TOKEN_ID": "your_token_id_here",
@@ -191,12 +258,9 @@ Add the server to your `claude_desktop_config.json`:
   }
 }
 ```
+*Restart Claude Desktop after updating the file.*
 
-Restart Claude Desktop after updating the file.
-
----
-
-### 2. Cursor
+#### 3. Cursor
 
 Add the server in your user settings (`~/.cursor/mcp.json`) or project-level `.cursor/mcp.json`:
 
@@ -204,7 +268,7 @@ Add the server in your user settings (`~/.cursor/mcp.json`) or project-level `.c
 {
   "mcpServers": {
     "bookstack": {
-      "command": "/absolute/path/to/mcp-bookstack",
+      "command": "/usr/local/bin/mcp-bookstack",
       "env": {
         "BOOKSTACK_URL": "https://wiki.example.com",
         "BOOKSTACK_TOKEN_ID": "your_token_id_here",
@@ -216,17 +280,15 @@ Add the server in your user settings (`~/.cursor/mcp.json`) or project-level `.c
 }
 ```
 
----
+#### 4. Antigravity / Gemini CLI
 
-### 3. Antigravity / Gemini CLI
-
-Add the server configuration to `~/.gemini/config/mcp_config.json`:
+Add the server to `~/.gemini/config/mcp_config.json`:
 
 ```json
 {
   "mcpServers": {
     "bookstack": {
-      "command": "/absolute/path/to/mcp-bookstack/target/release/mcp-bookstack",
+      "command": "/usr/local/bin/mcp-bookstack",
       "env": {
         "BOOKSTACK_URL": "https://wiki.example.com",
         "BOOKSTACK_TOKEN_ID": "your_token_id_here",
