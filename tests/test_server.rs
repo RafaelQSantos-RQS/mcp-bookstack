@@ -1,7 +1,7 @@
-use std::sync::Arc;
 use mcp_bookstack::server::clean_html_snippet;
 use mcp_bookstack::{BookStackClient, BookStackServer, Config};
 use rmcp::handler::server::wrapper::Parameters;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -119,6 +119,12 @@ async fn spawn_mock_bookstack() -> (String, tokio::task::JoinHandle<()>) {
                         "application/json",
                         r#"{"id":20,"book_id":10,"name":"Concurrency","slug":"concurrency","description":"Threads and channels","pages":[{"id":42,"name":"Rust Guide","slug":"rust-guide"}]}"#,
                     )
+                } else if first_line.contains("/api/chapters") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"data":[{"id":20,"book_id":10,"name":"Concurrency","slug":"concurrency","description":"Threads and channels"}],"total":1}"#,
+                    )
                 } else {
                     ("404 Not Found", "text/plain", "Not Found")
                 };
@@ -143,6 +149,11 @@ fn test_clean_html_snippet() {
     let snippet = "This is a <strong>highlighted</strong> snippet with &amp; entity.";
     let cleaned = clean_html_snippet(snippet);
     assert_eq!(cleaned, "This is a **highlighted** snippet with & entity.");
+
+    // Verify entities with comparison operators are preserved without dropping inner text
+    let code_snippet = "Compare where a &lt; b and c &gt; d.";
+    let cleaned_code = clean_html_snippet(code_snippet);
+    assert_eq!(cleaned_code, "Compare where a < b and c > d.");
 }
 
 #[tokio::test]
@@ -152,7 +163,7 @@ async fn test_server_tool_definitions() {
     let server = BookStackServer::new(client);
 
     let tools = server.tool_router.list_all();
-    assert_eq!(tools.len(), 18);
+    assert_eq!(tools.len(), 19);
 
     let expected_tools = [
         "search_content",
@@ -169,6 +180,7 @@ async fn test_server_tool_definitions() {
         "create_shelf",
         "update_shelf",
         "delete_shelf",
+        "list_chapters",
         "read_chapter",
         "create_chapter",
         "update_chapter",
@@ -237,8 +249,8 @@ async fn test_tools_execution_with_mock_bookstack() {
 
     // 1. search_content
     use mcp_bookstack::server::{
-        GetBookDetailsArgs, ListBooksArgs, ListShelvesArgs, ReadChapterArgs, ReadPageArgs,
-        SearchContentArgs,
+        GetBookDetailsArgs, ListBooksArgs, ListChaptersArgs, ListShelvesArgs, ReadChapterArgs,
+        ReadPageArgs, SearchContentArgs,
     };
 
     let search_res = server
@@ -296,6 +308,14 @@ async fn test_tools_execution_with_mock_bookstack() {
         .expect("read_chapter failed");
     assert!(chapter_res.contains("Concurrency"));
     assert!(chapter_res.contains("Rust Guide"));
+
+    // 7. list_chapters
+    let list_chap_res = server
+        .list_chapters(Parameters(ListChaptersArgs { book_id: Some(10) }))
+        .await
+        .expect("list_chapters failed");
+    assert!(list_chap_res.contains("Concurrency"));
+    assert!(list_chap_res.contains("ID: 20"));
 }
 
 #[tokio::test]
@@ -542,8 +562,12 @@ async fn test_main_binary_stdio_initialize() -> anyhow::Result<()> {
     let mut resp_line = String::new();
     stdout.read_line(&mut resp_line).await?;
 
-    let init_resp: serde_json::Value = serde_json::from_str(&resp_line)
-        .unwrap_or_else(|e| panic!("Failed to parse initialize response: {}\nLine was: {}", e, resp_line));
+    let init_resp: serde_json::Value = serde_json::from_str(&resp_line).unwrap_or_else(|e| {
+        panic!(
+            "Failed to parse initialize response: {}\nLine was: {}",
+            e, resp_line
+        )
+    });
 
     assert_eq!(init_resp["id"], 1);
     assert!(init_resp["result"]["capabilities"]["tools"].is_object());
@@ -571,17 +595,20 @@ async fn test_main_binary_stdio_initialize() -> anyhow::Result<()> {
     let mut list_resp_line = String::new();
     stdout.read_line(&mut list_resp_line).await?;
 
-    let list_resp: serde_json::Value = serde_json::from_str(&list_resp_line)
-        .unwrap_or_else(|e| panic!("Failed to parse tools/list response: {}\nLine was: {}", e, list_resp_line));
+    let list_resp: serde_json::Value = serde_json::from_str(&list_resp_line).unwrap_or_else(|e| {
+        panic!(
+            "Failed to parse tools/list response: {}\nLine was: {}",
+            e, list_resp_line
+        )
+    });
 
     assert_eq!(list_resp["id"], 2);
-    let tools = list_resp["result"]["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 18);
+    let tools = list_resp["result"]["tools"]
+        .as_array()
+        .expect("tools array");
+    assert_eq!(tools.len(), 19);
 
-    let tool_names: Vec<&str> = tools
-        .iter()
-        .filter_map(|t| t["name"].as_str())
-        .collect();
+    let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(tool_names.contains(&"search_content"));
     assert!(tool_names.contains(&"read_page"));
     assert!(tool_names.contains(&"create_page"));
@@ -596,6 +623,7 @@ async fn test_main_binary_stdio_initialize() -> anyhow::Result<()> {
     assert!(tool_names.contains(&"create_shelf"));
     assert!(tool_names.contains(&"update_shelf"));
     assert!(tool_names.contains(&"delete_shelf"));
+    assert!(tool_names.contains(&"list_chapters"));
     assert!(tool_names.contains(&"read_chapter"));
     assert!(tool_names.contains(&"create_chapter"));
     assert!(tool_names.contains(&"update_chapter"));
@@ -620,11 +648,17 @@ async fn test_main_binary_stdio_initialize() -> anyhow::Result<()> {
     let mut call_resp_line = String::new();
     stdout.read_line(&mut call_resp_line).await?;
 
-    let call_resp: serde_json::Value = serde_json::from_str(&call_resp_line)
-        .unwrap_or_else(|e| panic!("Failed to parse tools/call response: {}\nLine was: {}", e, call_resp_line));
+    let call_resp: serde_json::Value = serde_json::from_str(&call_resp_line).unwrap_or_else(|e| {
+        panic!(
+            "Failed to parse tools/call response: {}\nLine was: {}",
+            e, call_resp_line
+        )
+    });
 
     assert_eq!(call_resp["id"], 3);
-    let content = call_resp["result"]["content"].as_array().expect("content array");
+    let content = call_resp["result"]["content"]
+        .as_array()
+        .expect("content array");
     assert!(!content.is_empty());
     let text = content[0]["text"].as_str().expect("text content");
     assert!(text.contains("# Rust Guide"));

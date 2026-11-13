@@ -14,9 +14,10 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting BookStack MCP server...");
 
-    let config = Config::from_env().context("Failed to load BookStack configuration from environment")?;
+    let config =
+        Config::from_env().context("Failed to load BookStack configuration from environment")?;
     let client = Arc::new(BookStackClient::new(&config));
-    let server = BookStackServer::new(client);
+    let server = BookStackServer::new(client).with_allow_delete(config.allow_delete);
 
     info!("Serving BookStack MCP over stdio...");
     let running_server = server.serve(rmcp::transport::stdio()).await?;

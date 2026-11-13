@@ -1,5 +1,5 @@
-use mcp_bookstack::config::format_auth_header;
 use mcp_bookstack::Config;
+use mcp_bookstack::config::format_auth_header;
 use std::sync::Mutex;
 
 static ENV_MUTEX: Mutex<()> = Mutex::new(());
@@ -39,27 +39,33 @@ fn test_config_empty_url() {
 #[test]
 fn test_config_empty_token_id() {
     let err = Config::new("https://example.com", "", "my_secret").unwrap_err();
-    assert!(err
-        .to_string()
-        .contains("BOOKSTACK_TOKEN_ID cannot be empty"));
+    assert!(
+        err.to_string()
+            .contains("BOOKSTACK_TOKEN_ID cannot be empty")
+    );
 
     let err_ws = Config::new("https://example.com", "  ", "my_secret").unwrap_err();
-    assert!(err_ws
-        .to_string()
-        .contains("BOOKSTACK_TOKEN_ID cannot be empty"));
+    assert!(
+        err_ws
+            .to_string()
+            .contains("BOOKSTACK_TOKEN_ID cannot be empty")
+    );
 }
 
 #[test]
 fn test_config_empty_token_secret() {
     let err = Config::new("https://example.com", "my_id", "").unwrap_err();
-    assert!(err
-        .to_string()
-        .contains("BOOKSTACK_TOKEN_SECRET cannot be empty"));
+    assert!(
+        err.to_string()
+            .contains("BOOKSTACK_TOKEN_SECRET cannot be empty")
+    );
 
     let err_ws = Config::new("https://example.com", "my_id", "  ").unwrap_err();
-    assert!(err_ws
-        .to_string()
-        .contains("BOOKSTACK_TOKEN_SECRET cannot be empty"));
+    assert!(
+        err_ws
+            .to_string()
+            .contains("BOOKSTACK_TOKEN_SECRET cannot be empty")
+    );
 }
 
 #[test]

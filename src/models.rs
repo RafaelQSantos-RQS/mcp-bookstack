@@ -1,7 +1,8 @@
-use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
-fn anyof_nullable_u64_schema(_generator: &mut SchemaGenerator) -> Schema {
+/// Schema generator for nullable integer fields (`anyOf: [{"type": "integer"}, {"type": "null"}]`).
+pub fn nullable_integer_schema(_generator: &mut SchemaGenerator) -> Schema {
     json_schema!({
         "anyOf": [
             { "type": "integer" },
@@ -314,7 +315,7 @@ pub struct TagInput {
     #[serde(default)]
     pub value: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub order: Option<u64>,
 }
 

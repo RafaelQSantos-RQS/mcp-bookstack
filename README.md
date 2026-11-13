@@ -23,7 +23,7 @@ A high-performance [Model Context Protocol (MCP)](https://modelcontextprotocol.i
 
 ## Available Tools
 
-The server exposes 18 tools to MCP clients:
+The server exposes 19 tools to MCP clients:
 
 ### Reading & Discovery Tools
 | Tool Name | Parameters | Description |
@@ -33,6 +33,7 @@ The server exposes 18 tools to MCP clients:
 | `list_books` | `page` *(integer, optional)*<br>`count` *(integer, optional)* | Lists books in the instance with their IDs, names, slugs, and short descriptions. |
 | `get_book_details`| `book_id` *(integer, required)* | Retrieves detailed book information, including its table of contents, chapters, and nested pages. |
 | `list_shelves` | `page` *(integer, optional)*<br>`count` *(integer, optional)* | Lists all bookshelves in the BookStack instance with IDs, names, and slugs. |
+| `list_chapters` | `book_id` *(integer, optional)* | Lists chapters in the instance, optionally filtered by parent book ID. |
 | `read_chapter` | `chapter_id` *(integer, required)* | Retrieves chapter details, description, and list of child pages within the chapter. |
 
 ### Content Creation & Update Tools

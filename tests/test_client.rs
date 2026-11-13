@@ -14,7 +14,6 @@ fn test_client_header_and_url_construction() {
 
     assert_eq!(client.base_url, "https://bookstack.test");
     assert_eq!(client.auth_header, "Token token-id:token-secret");
-    assert!(!client.allow_delete);
 
     assert_eq!(client.search_url(), "https://bookstack.test/api/search");
     assert_eq!(client.books_url(), "https://bookstack.test/api/books");
@@ -57,7 +56,8 @@ async fn test_get_page_markdown_fallback_to_page_markdown_field() {
         let (mut socket, _) = listener.accept().await.unwrap();
         let _ = socket.read(&mut buf).await.unwrap();
 
-        let page_json = r##"{"id":1,"name":"Test","slug":"test","markdown":"# Fallback Markdown"}"##;
+        let page_json =
+            r##"{"id":1,"name":"Test","slug":"test","markdown":"# Fallback Markdown"}"##;
         let response = format!(
             "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
             page_json.len(),
@@ -137,6 +137,43 @@ async fn test_get_page_markdown_fallback_to_raw_html() {
 }
 
 #[tokio::test]
+async fn test_get_page_markdown_empty_page_placeholder() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server_url = format!("http://127.0.0.1:{}", port);
+
+    let config = Config::new(&server_url, "test_id", "test_sec").unwrap();
+    let client = BookStackClient::new(&config);
+
+    tokio::spawn(async move {
+        // First request: export returns empty text
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = socket.read(&mut buf).await.unwrap();
+
+        let response = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+        socket.write_all(response.as_bytes()).await.unwrap();
+        let _ = socket.shutdown().await;
+
+        // Second request: get_page returns page with empty markdown and html
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let _ = socket.read(&mut buf).await.unwrap();
+
+        let page_json = r##"{"id":1,"name":"Blank Page","slug":"blank-page"}"##;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            page_json.len(),
+            page_json
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+        let _ = socket.shutdown().await;
+    });
+
+    let content = client.get_page_markdown(1).await.unwrap();
+    assert_eq!(content, "# Blank Page\n\n*(This page is empty)*");
+}
+
+#[tokio::test]
 async fn test_search_and_list_endpoints() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -151,9 +188,11 @@ async fn test_search_and_list_endpoints() {
         let mut buf = [0u8; 2048];
         let n = socket.read(&mut buf).await.unwrap();
         let req_str = String::from_utf8_lossy(&buf[..n]);
-        assert!(req_str
-            .to_lowercase()
-            .contains("authorization: token test_id:test_sec"));
+        assert!(
+            req_str
+                .to_lowercase()
+                .contains("authorization: token test_id:test_sec")
+        );
         assert!(req_str.contains("query=rust"));
 
         let search_json = r##"{"data":[{"id":10,"name":"Rust Guide","slug":"rust-guide","type":"book"}],"total":1}"##;
@@ -210,8 +249,7 @@ async fn test_search_and_list_endpoints() {
         // 5. get_chapter
         let (mut socket, _) = listener.accept().await.unwrap();
         let _ = socket.read(&mut buf).await.unwrap();
-        let chapter_json =
-            r##"{"id":20,"book_id":10,"name":"Intro","slug":"intro","pages":[]}"##;
+        let chapter_json = r##"{"id":20,"book_id":10,"name":"Intro","slug":"intro","pages":[]}"##;
         let response = format!(
             "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
             chapter_json.len(),
@@ -298,11 +336,21 @@ async fn test_client_mutation_methods() {
 
         // 1. POST /api/pages
         let (mut socket, _) = listener.accept().await.unwrap();
-        handle_req(&mut socket, "200 OK", r#"{"id":42,"name":"New Page","slug":"new-page","book_id":10}"#).await;
+        handle_req(
+            &mut socket,
+            "200 OK",
+            r#"{"id":42,"name":"New Page","slug":"new-page","book_id":10}"#,
+        )
+        .await;
 
         // 2. PUT /api/pages/42
         let (mut socket, _) = listener.accept().await.unwrap();
-        handle_req(&mut socket, "200 OK", r#"{"id":42,"name":"Updated Page","slug":"updated-page","book_id":10}"#).await;
+        handle_req(
+            &mut socket,
+            "200 OK",
+            r#"{"id":42,"name":"Updated Page","slug":"updated-page","book_id":10}"#,
+        )
+        .await;
 
         // 3. DELETE /api/pages/42
         let (mut socket, _) = listener.accept().await.unwrap();
@@ -310,11 +358,21 @@ async fn test_client_mutation_methods() {
 
         // 4. POST /api/chapters
         let (mut socket, _) = listener.accept().await.unwrap();
-        handle_req(&mut socket, "200 OK", r#"{"id":20,"book_id":10,"name":"New Chapter","slug":"new-chapter"}"#).await;
+        handle_req(
+            &mut socket,
+            "200 OK",
+            r#"{"id":20,"book_id":10,"name":"New Chapter","slug":"new-chapter"}"#,
+        )
+        .await;
 
         // 5. PUT /api/chapters/20
         let (mut socket, _) = listener.accept().await.unwrap();
-        handle_req(&mut socket, "200 OK", r#"{"id":20,"book_id":10,"name":"Updated Chapter","slug":"updated-chapter"}"#).await;
+        handle_req(
+            &mut socket,
+            "200 OK",
+            r#"{"id":20,"book_id":10,"name":"Updated Chapter","slug":"updated-chapter"}"#,
+        )
+        .await;
 
         // 6. DELETE /api/chapters/20
         let (mut socket, _) = listener.accept().await.unwrap();
@@ -322,11 +380,21 @@ async fn test_client_mutation_methods() {
 
         // 7. POST /api/books
         let (mut socket, _) = listener.accept().await.unwrap();
-        handle_req(&mut socket, "200 OK", r#"{"id":10,"name":"New Book","slug":"new-book"}"#).await;
+        handle_req(
+            &mut socket,
+            "200 OK",
+            r#"{"id":10,"name":"New Book","slug":"new-book"}"#,
+        )
+        .await;
 
         // 8. PUT /api/books/10
         let (mut socket, _) = listener.accept().await.unwrap();
-        handle_req(&mut socket, "200 OK", r#"{"id":10,"name":"Updated Book","slug":"updated-book"}"#).await;
+        handle_req(
+            &mut socket,
+            "200 OK",
+            r#"{"id":10,"name":"Updated Book","slug":"updated-book"}"#,
+        )
+        .await;
 
         // 9. DELETE /api/books/10
         let (mut socket, _) = listener.accept().await.unwrap();
@@ -334,11 +402,21 @@ async fn test_client_mutation_methods() {
 
         // 10. POST /api/shelves
         let (mut socket, _) = listener.accept().await.unwrap();
-        handle_req(&mut socket, "200 OK", r#"{"id":30,"name":"New Shelf","slug":"new-shelf"}"#).await;
+        handle_req(
+            &mut socket,
+            "200 OK",
+            r#"{"id":30,"name":"New Shelf","slug":"new-shelf"}"#,
+        )
+        .await;
 
         // 11. PUT /api/shelves/30
         let (mut socket, _) = listener.accept().await.unwrap();
-        handle_req(&mut socket, "200 OK", r#"{"id":30,"name":"Updated Shelf","slug":"updated-shelf"}"#).await;
+        handle_req(
+            &mut socket,
+            "200 OK",
+            r#"{"id":30,"name":"Updated Shelf","slug":"updated-shelf"}"#,
+        )
+        .await;
 
         // 12. DELETE /api/shelves/30
         let (mut socket, _) = listener.accept().await.unwrap();

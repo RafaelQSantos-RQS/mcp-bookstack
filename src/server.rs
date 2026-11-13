@@ -1,46 +1,19 @@
 use std::sync::Arc;
 
 use rmcp::{
+    ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    tool, tool_handler, tool_router, ServerHandler,
+    tool, tool_handler, tool_router,
 };
-use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
 use crate::client::BookStackClient;
 use crate::models::{
     CreateBookPayload, CreateChapterPayload, CreatePagePayload, CreateShelfPayload, TagInput,
     UpdateBookPayload, UpdateChapterPayload, UpdatePagePayload, UpdateShelfPayload,
+    nullable_integer_schema,
 };
-
-/// Generates a schema with explicit `anyOf` branches (`[{"type": "integer"}, {"type": "null"}]`)
-/// instead of `type: ["integer", "null"]` for portable compatibility with all MCP clients and LLMs.
-fn anyof_nullable_u32_schema(_gen: &mut SchemaGenerator) -> Schema {
-    json_schema!({
-        "anyOf": [
-            { "type": "integer" },
-            { "type": "null" }
-        ]
-    })
-}
-
-fn anyof_nullable_u64_schema(_gen: &mut SchemaGenerator) -> Schema {
-    json_schema!({
-        "anyOf": [
-            { "type": "integer" },
-            { "type": "null" }
-        ]
-    })
-}
-
-fn anyof_nullable_i64_schema(_gen: &mut SchemaGenerator) -> Schema {
-    json_schema!({
-        "anyOf": [
-            { "type": "integer" },
-            { "type": "null" }
-        ]
-    })
-}
 
 fn anyof_nullable_string_schema(_gen: &mut SchemaGenerator) -> Schema {
     json_schema!({
@@ -83,11 +56,11 @@ pub struct SearchContentArgs {
     pub query: String,
     /// Optional page number for pagination
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u32_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub page: Option<u32>,
     /// Optional number of items per page
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u32_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub count: Option<u32>,
 }
 
@@ -105,11 +78,11 @@ pub struct CreatePageArgs {
     pub name: String,
     /// ID of the parent book (required if chapter_id is not specified)
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub book_id: Option<u64>,
     /// ID of the parent chapter (required if book_id is not specified)
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub chapter_id: Option<u64>,
     /// Page content formatted in Markdown (preferred)
     #[serde(default)]
@@ -121,7 +94,7 @@ pub struct CreatePageArgs {
     pub html: Option<String>,
     /// Optional priority order for sorting
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_i64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub priority: Option<i64>,
     /// Optional tags to associate with the page
     #[serde(default)]
@@ -140,11 +113,11 @@ pub struct UpdatePageArgs {
     pub name: Option<String>,
     /// Optional new parent book ID
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub book_id: Option<u64>,
     /// Optional new parent chapter ID
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub chapter_id: Option<u64>,
     /// Updated page content formatted in Markdown
     #[serde(default)]
@@ -156,7 +129,7 @@ pub struct UpdatePageArgs {
     pub html: Option<String>,
     /// Optional priority order for sorting
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_i64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub priority: Option<i64>,
     /// Optional tags to associate with the page
     #[serde(default)]
@@ -178,11 +151,11 @@ pub struct DeletePageArgs {
 pub struct ListBooksArgs {
     /// Optional page number for pagination
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u32_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub page: Option<u32>,
     /// Optional number of items per page
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u32_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub count: Option<u32>,
 }
 
@@ -212,7 +185,7 @@ pub struct CreateBookArgs {
     pub tags: Option<Vec<TagInput>>,
     /// Optional ID of a template page to use as default
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub default_template_id: Option<u64>,
 }
 
@@ -239,7 +212,7 @@ pub struct UpdateBookArgs {
     pub tags: Option<Vec<TagInput>>,
     /// Optional ID of a template page to use as default
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub default_template_id: Option<u64>,
 }
 
@@ -257,11 +230,11 @@ pub struct DeleteBookArgs {
 pub struct ListShelvesArgs {
     /// Optional page number for pagination
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u32_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub page: Option<u32>,
     /// Optional number of items per page
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u32_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub count: Option<u32>,
 }
 
@@ -324,6 +297,15 @@ pub struct DeleteShelfArgs {
     pub confirm: bool,
 }
 
+/// Arguments for `list_chapters` tool.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct ListChaptersArgs {
+    /// Optional book ID to filter chapters by parent book
+    #[serde(default)]
+    #[schemars(schema_with = "nullable_integer_schema")]
+    pub book_id: Option<u64>,
+}
+
 /// Arguments for `read_chapter` tool.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ReadChapterArgs {
@@ -348,7 +330,7 @@ pub struct CreateChapterArgs {
     pub description_html: Option<String>,
     /// Optional priority order for sorting
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_i64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub priority: Option<i64>,
     /// Optional tags to associate with the chapter
     #[serde(default)]
@@ -356,7 +338,7 @@ pub struct CreateChapterArgs {
     pub tags: Option<Vec<TagInput>>,
     /// Optional ID of a template page to use as default for pages in this chapter
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub default_template_id: Option<u64>,
 }
 
@@ -367,7 +349,7 @@ pub struct UpdateChapterArgs {
     pub chapter_id: u64,
     /// Optional new parent book ID
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub book_id: Option<u64>,
     /// Optional new name for the chapter
     #[serde(default)]
@@ -383,7 +365,7 @@ pub struct UpdateChapterArgs {
     pub description_html: Option<String>,
     /// Optional priority order for sorting
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_i64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub priority: Option<i64>,
     /// Optional tags to associate with the chapter
     #[serde(default)]
@@ -391,7 +373,7 @@ pub struct UpdateChapterArgs {
     pub tags: Option<Vec<TagInput>>,
     /// Optional ID of a template page to use as default
     #[serde(default)]
-    #[schemars(schema_with = "anyof_nullable_u64_schema")]
+    #[schemars(schema_with = "nullable_integer_schema")]
     pub default_template_id: Option<u64>,
 }
 
@@ -414,12 +396,12 @@ pub struct BookStackServer {
 
 impl BookStackServer {
     /// Creates a new `BookStackServer` wrapping the given client.
+    /// Deletions default to disabled; use `.with_allow_delete(bool)` to configure.
     pub fn new(client: Arc<BookStackClient>) -> Self {
-        let allow_delete = client.allow_delete;
         Self {
             client,
             tool_router: Self::tool_router(),
-            allow_delete,
+            allow_delete: false,
         }
     }
 
@@ -547,7 +529,10 @@ impl BookStackServer {
             out.push_str("No books found.\n");
         } else {
             for b in &books {
-                out.push_str(&format!("- **{}** (ID: {}, Slug: `{}`)\n", b.name, b.id, b.slug));
+                out.push_str(&format!(
+                    "- **{}** (ID: {}, Slug: `{}`)\n",
+                    b.name, b.id, b.slug
+                ));
                 if let Some(ref desc) = b.description
                     && !desc.trim().is_empty()
                 {
@@ -590,7 +575,10 @@ impl BookStackServer {
             } else {
                 for item in contents {
                     let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("Untitled");
+                    let name = item
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Untitled");
                     let id = item.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
                     let slug = item.get("slug").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -606,10 +594,8 @@ impl BookStackServer {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("Untitled");
                                 let p_id = page.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
-                                let p_slug = page
-                                    .get("slug")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
+                                let p_slug =
+                                    page.get("slug").and_then(|v| v.as_str()).unwrap_or("");
                                 out.push_str(&format!(
                                     "  - Page: {} (ID: {}, Slug: `{}`)\n",
                                     p_name, p_id, p_slug
@@ -618,7 +604,10 @@ impl BookStackServer {
                         }
                         out.push('\n');
                     } else if item_type == "page" {
-                        out.push_str(&format!("- Page: {} (ID: {}, Slug: `{}`)\n", name, id, slug));
+                        out.push_str(&format!(
+                            "- Page: {} (ID: {}, Slug: `{}`)\n",
+                            name, id, slug
+                        ));
                     }
                 }
             }
@@ -650,7 +639,10 @@ impl BookStackServer {
             out.push_str("No shelves found.\n");
         } else {
             for s in &shelves {
-                out.push_str(&format!("- **{}** (ID: {}, Slug: `{}`)\n", s.name, s.id, s.slug));
+                out.push_str(&format!(
+                    "- **{}** (ID: {}, Slug: `{}`)\n",
+                    s.name, s.id, s.slug
+                ));
                 if let Some(ref desc) = s.description
                     && !desc.trim().is_empty()
                 {
@@ -701,6 +693,42 @@ impl BookStackServer {
             }
         } else {
             out.push_str("No pages found in this chapter.\n");
+        }
+
+        Ok(out)
+    }
+
+    /// List chapters in the BookStack instance, optionally filtered by book ID.
+    #[tool(
+        name = "list_chapters",
+        description = "List chapters in the BookStack instance, optionally filtered by book ID"
+    )]
+    pub async fn list_chapters(
+        &self,
+        params: Parameters<ListChaptersArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let chapters = self
+            .client
+            .list_chapters(args.book_id)
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        let mut out = String::from("# Chapters\n\n");
+        if chapters.is_empty() {
+            out.push_str("No chapters found.\n");
+        } else {
+            for c in &chapters {
+                out.push_str(&format!(
+                    "- **{}** (ID: {}, Book ID: {}, Slug: `{}`)\n",
+                    c.name, c.id, c.book_id, c.slug
+                ));
+                if let Some(ref desc) = c.description
+                    && !desc.trim().is_empty()
+                {
+                    out.push_str(&format!("  - Description: {}\n", desc.trim()));
+                }
+            }
         }
 
         Ok(out)
@@ -904,10 +932,7 @@ impl BookStackServer {
     }
 
     /// Create a new book.
-    #[tool(
-        name = "create_book",
-        description = "Create a new book in BookStack"
-    )]
+    #[tool(name = "create_book", description = "Create a new book in BookStack")]
     pub async fn create_book(
         &self,
         params: Parameters<CreateBookArgs>,
@@ -1080,13 +1105,7 @@ pub fn clean_html_snippet(input: &str) -> String {
         .replace("<em>", "*")
         .replace("</em>", "*")
         .replace("<i>", "*")
-        .replace("</i>", "*")
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#039;", "'")
-        .replace("&nbsp;", " ");
+        .replace("</i>", "*");
 
     let mut clean = String::new();
     let mut in_tag = false;
@@ -1099,5 +1118,14 @@ pub fn clean_html_snippet(input: &str) -> String {
             clean.push(c);
         }
     }
-    clean.trim().to_string()
+
+    clean
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#039;", "'")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .trim()
+        .to_string()
 }

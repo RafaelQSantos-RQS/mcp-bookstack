@@ -5,7 +5,7 @@ use crate::models::{
     SearchResponse, ShelfDetails, ShelfListItem, UpdateBookPayload, UpdateChapterPayload,
     UpdatePagePayload, UpdateShelfPayload,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use reqwest::Client;
 
 /// HTTP client wrapper for interacting with the BookStack REST API.
@@ -14,17 +14,19 @@ pub struct BookStackClient {
     pub client: Client,
     pub base_url: String,
     pub auth_header: String,
-    pub allow_delete: bool,
 }
 
 impl BookStackClient {
     /// Creates a new `BookStackClient` from the given configuration.
     pub fn new(config: &Config) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_default();
         Self {
-            client: Client::new(),
+            client,
             base_url: config.url.clone(),
             auth_header: config.auth_header(),
-            allow_delete: config.allow_delete,
         }
     }
 
@@ -34,7 +36,6 @@ impl BookStackClient {
             client,
             base_url: config.url.clone(),
             auth_header: config.auth_header(),
-            allow_delete: config.allow_delete,
         }
     }
 
@@ -163,7 +164,8 @@ impl BookStackClient {
             return Ok(html);
         }
 
-        bail!("Page {} has no markdown or HTML content available", id)
+        // Page exists in BookStack but currently has empty content
+        Ok(format!("# {}\n\n*(This page is empty)*", page.name))
     }
 
     /// Fetch page details.
@@ -210,7 +212,10 @@ impl BookStackClient {
             req = req.query(&[("count", c.to_string())]);
         }
 
-        let resp = req.send().await.context("Failed to send list_books request")?;
+        let resp = req
+            .send()
+            .await
+            .context("Failed to send list_books request")?;
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -261,7 +266,10 @@ impl BookStackClient {
             req = req.query(&[("filter[book_id]", bid.to_string())]);
         }
 
-        let resp = req.send().await.context("Failed to send list_chapters request")?;
+        let resp = req
+            .send()
+            .await
+            .context("Failed to send list_chapters request")?;
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -613,7 +621,11 @@ impl BookStackClient {
 
     /// Update an existing shelf.
     /// Calls `PUT {base_url}/api/shelves/{id}`.
-    pub async fn update_shelf(&self, id: u64, payload: &UpdateShelfPayload) -> Result<ShelfDetails> {
+    pub async fn update_shelf(
+        &self,
+        id: u64,
+        payload: &UpdateShelfPayload,
+    ) -> Result<ShelfDetails> {
         let resp = self
             .client
             .put(self.shelf_url(id))
@@ -626,7 +638,12 @@ impl BookStackClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            bail!("Update shelf {} failed with status {}: {}", id, status, body);
+            bail!(
+                "Update shelf {} failed with status {}: {}",
+                id,
+                status,
+                body
+            );
         }
 
         let shelf = resp
@@ -650,7 +667,12 @@ impl BookStackClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            bail!("Delete shelf {} failed with status {}: {}", id, status, body);
+            bail!(
+                "Delete shelf {} failed with status {}: {}",
+                id,
+                status,
+                body
+            );
         }
 
         Ok(())

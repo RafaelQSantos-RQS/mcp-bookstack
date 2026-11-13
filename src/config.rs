@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -17,16 +17,16 @@ impl Config {
     ///
     /// Automatically reads a `.env` file if present in the current working directory.
     pub fn from_env() -> Result<Self> {
-        load_dotenv();
+        let dotenv = parse_dotenv();
 
-        let url = std::env::var("BOOKSTACK_URL")
+        let url = get_var("BOOKSTACK_URL", &dotenv)
             .context("BOOKSTACK_URL environment variable is required")?;
-        let token_id = std::env::var("BOOKSTACK_TOKEN_ID")
+        let token_id = get_var("BOOKSTACK_TOKEN_ID", &dotenv)
             .context("BOOKSTACK_TOKEN_ID environment variable is required")?;
-        let token_secret = std::env::var("BOOKSTACK_TOKEN_SECRET")
+        let token_secret = get_var("BOOKSTACK_TOKEN_SECRET", &dotenv)
             .context("BOOKSTACK_TOKEN_SECRET environment variable is required")?;
 
-        let allow_delete = std::env::var("BOOKSTACK_ALLOW_DELETE")
+        let allow_delete = get_var("BOOKSTACK_ALLOW_DELETE", &dotenv)
             .map(|v| {
                 let v = v.trim().to_lowercase();
                 v == "true" || v == "1" || v == "yes"
@@ -96,9 +96,15 @@ pub fn format_auth_header(token_id: &str, token_secret: &str) -> String {
     format!("Token {}:{}", token_id, token_secret)
 }
 
+/// Helper to look up an environment variable with fallback to a parsed `.env` map.
+fn get_var(key: &str, dotenv: &std::collections::HashMap<String, String>) -> Option<String> {
+    std::env::var(key).ok().or_else(|| dotenv.get(key).cloned())
+}
+
 /// Simple built-in reader for `.env` file in the current working directory,
-/// setting environment variables without overriding already defined ones.
-fn load_dotenv() {
+/// safely parsing key-value pairs without mutating the global process environment.
+fn parse_dotenv() -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
     if let Ok(contents) = std::fs::read_to_string(".env") {
         for line in contents.lines() {
             let line = line.trim();
@@ -108,12 +114,11 @@ fn load_dotenv() {
             if let Some((key, value)) = line.split_once('=') {
                 let key = key.trim();
                 let value = value.trim().trim_matches('"').trim_matches('\'');
-                if !key.is_empty() && std::env::var(key).is_err() {
-                    unsafe {
-                        std::env::set_var(key, value);
-                    }
+                if !key.is_empty() {
+                    map.insert(key.to_string(), value.to_string());
                 }
             }
         }
     }
+    map
 }
