@@ -3,6 +3,7 @@
 [![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io)
+[![M8ven Score](https://m8ven.ai/badge/mcp/rafaelqsantos-rqs-mcp-bookstack-1tot2a?v=ec94dbe7c3305c7b79bb441c4d2453cb)](https://m8ven.ai/mcp/rafaelqsantos-rqs-mcp-bookstack-1tot2a?s=readme)
 
 A high-performance [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for [BookStack](https://www.bookstackapp.com/), implemented in Rust.
 
