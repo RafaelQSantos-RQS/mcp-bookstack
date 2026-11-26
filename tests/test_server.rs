@@ -87,7 +87,7 @@ async fn spawn_mock_bookstack() -> (String, tokio::task::JoinHandle<()>) {
                     (
                         "200 OK",
                         "application/json",
-                        r#"{"data":[{"id":42,"name":"Rust Guide","slug":"rust-guide","type":"page","url":"https://example.com/books/rust/page/rust-guide","preview_html":{"name":"Rust Guide","content":"Learn <strong>Rust</strong> fast"},"book_id":1,"tags":[]}],"total":1}"#,
+                        r#"{"data":[{"id":42,"name":"Rust Guide","slug":"rust-guide","type":"page","url":"https://example.com/books/rust/page/rust-guide","preview_html":{"name":"Rust Guide","content":"Learn <strong>Rust</strong> fast"},"book_id":1,"tags":[],"created_at":"2026-11-20T10:00:00Z","updated_at":"2026-11-26T15:30:00Z"}],"total":1}"#,
                     )
                 } else if first_line.contains("/api/pages/42/export/markdown") {
                     (
@@ -95,35 +95,47 @@ async fn spawn_mock_bookstack() -> (String, tokio::task::JoinHandle<()>) {
                         "text/plain; charset=UTF-8",
                         "# Rust Guide\n\nWelcome to BookStack documentation written in Rust.",
                     )
+                } else if first_line.starts_with("GET /api/pages") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"data":[{"id":42,"name":"Rust Guide","slug":"rust-guide","book_id":10,"chapter_id":20,"revision_count":3,"created_at":"2026-11-20T10:00:00Z","updated_at":"2026-11-26T15:30:00Z","updated_by":1}],"total":1}"#,
+                    )
+                } else if first_line.contains("/api/audit-log") {
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"data":[{"id":1,"type":"page_update","detail":"Updated section 2","user_id":1,"loggable_id":42,"loggable_type":"page","created_at":"2026-11-26T15:30:00Z","user":{"id":1,"name":"Admin","slug":"admin"}}],"total":1}"#,
+                    )
                 } else if first_line.contains("/api/books/10") {
                     (
                         "200 OK",
                         "application/json",
-                        r#"{"id":10,"name":"Advanced Systems","slug":"advanced-systems","description":"Deep systems guide","contents":[{"id":20,"name":"Concurrency","slug":"concurrency","type":"chapter","pages":[{"id":42,"name":"Rust Guide","slug":"rust-guide"}]}]}"#,
+                        r#"{"id":10,"name":"Advanced Systems","slug":"advanced-systems","description":"Deep systems guide","created_at":"2026-11-01T08:00:00Z","updated_at":"2026-11-25T12:00:00Z","updated_by":{"id":1,"name":"Admin"},"contents":[{"id":20,"name":"Concurrency","slug":"concurrency","type":"chapter","pages":[{"id":42,"name":"Rust Guide","slug":"rust-guide"}]}]}"#,
                     )
                 } else if first_line.contains("/api/books") {
                     (
                         "200 OK",
                         "application/json",
-                        r#"{"data":[{"id":10,"name":"Advanced Systems","slug":"advanced-systems","description":"Deep systems guide"}],"total":1}"#,
+                        r#"{"data":[{"id":10,"name":"Advanced Systems","slug":"advanced-systems","description":"Deep systems guide","created_at":"2026-11-01T08:00:00Z","updated_at":"2026-11-25T12:00:00Z","updated_by":1}],"total":1}"#,
                     )
                 } else if first_line.contains("/api/shelves") {
                     (
                         "200 OK",
                         "application/json",
-                        r#"{"data":[{"id":5,"name":"Engineering Shelf","slug":"engineering-shelf","description":"All engineering books"}],"total":1}"#,
+                        r#"{"data":[{"id":5,"name":"Engineering Shelf","slug":"engineering-shelf","description":"All engineering books","created_at":"2026-10-15T09:00:00Z","updated_at":"2026-11-24T11:00:00Z"}],"total":1}"#,
                     )
                 } else if first_line.contains("/api/chapters/20") {
                     (
                         "200 OK",
                         "application/json",
-                        r#"{"id":20,"book_id":10,"name":"Concurrency","slug":"concurrency","description":"Threads and channels","pages":[{"id":42,"name":"Rust Guide","slug":"rust-guide"}]}"#,
+                        r#"{"id":20,"book_id":10,"name":"Concurrency","slug":"concurrency","description":"Threads and channels","created_at":"2026-11-02T09:00:00Z","updated_at":"2026-11-25T14:00:00Z","pages":[{"id":42,"name":"Rust Guide","slug":"rust-guide"}]}"#,
                     )
                 } else if first_line.contains("/api/chapters") {
                     (
                         "200 OK",
                         "application/json",
-                        r#"{"data":[{"id":20,"book_id":10,"name":"Concurrency","slug":"concurrency","description":"Threads and channels"}],"total":1}"#,
+                        r#"{"data":[{"id":20,"book_id":10,"name":"Concurrency","slug":"concurrency","description":"Threads and channels","created_at":"2026-11-02T09:00:00Z","updated_at":"2026-11-25T14:00:00Z"}],"total":1}"#,
                     )
                 } else {
                     ("404 Not Found", "text/plain", "Not Found")
@@ -163,11 +175,12 @@ async fn test_server_tool_definitions() {
     let server = BookStackServer::new(client);
 
     let tools = server.tool_router.list_all();
-    assert_eq!(tools.len(), 19);
+    assert_eq!(tools.len(), 21);
 
     let expected_tools = [
         "search_content",
         "read_page",
+        "list_pages",
         "create_page",
         "update_page",
         "delete_page",
@@ -185,6 +198,7 @@ async fn test_server_tool_definitions() {
         "create_chapter",
         "update_chapter",
         "delete_chapter",
+        "get_recent_activity",
     ];
 
     let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
@@ -249,8 +263,8 @@ async fn test_tools_execution_with_mock_bookstack() {
 
     // 1. search_content
     use mcp_bookstack::server::{
-        GetBookDetailsArgs, ListBooksArgs, ListChaptersArgs, ListShelvesArgs, ReadChapterArgs,
-        ReadPageArgs, SearchContentArgs,
+        GetBookDetailsArgs, GetRecentActivityArgs, ListBooksArgs, ListChaptersArgs, ListPagesArgs,
+        ListShelvesArgs, ReadChapterArgs, ReadPageArgs, SearchContentArgs,
     };
 
     let search_res = server
@@ -264,6 +278,7 @@ async fn test_tools_execution_with_mock_bookstack() {
     assert!(search_res.contains("Rust Guide"));
     assert!(search_res.contains("42"));
     assert!(search_res.contains("**Rust**"));
+    assert!(search_res.contains("**Updated**: 2026-11-26T15:30:00Z"));
 
     // 2. read_page
     let page_res = server
@@ -283,6 +298,7 @@ async fn test_tools_execution_with_mock_bookstack() {
         .expect("list_books failed");
     assert!(books_res.contains("Advanced Systems"));
     assert!(books_res.contains("ID: 10"));
+    assert!(books_res.contains("Updated: 2026-11-25T12:00:00Z (by User #1)"));
 
     // 4. get_book_details
     let book_res = server
@@ -292,6 +308,7 @@ async fn test_tools_execution_with_mock_bookstack() {
     assert!(book_res.contains("Advanced Systems"));
     assert!(book_res.contains("Concurrency"));
     assert!(book_res.contains("Rust Guide"));
+    assert!(book_res.contains("**Updated**: 2026-11-25T12:00:00Z (by Admin (ID: 1))"));
 
     // 5. list_shelves
     let shelves_res = server
@@ -300,6 +317,7 @@ async fn test_tools_execution_with_mock_bookstack() {
         .expect("list_shelves failed");
     assert!(shelves_res.contains("Engineering Shelf"));
     assert!(shelves_res.contains("ID: 5"));
+    assert!(shelves_res.contains("Updated: 2026-11-24T11:00:00Z"));
 
     // 6. read_chapter
     let chapter_res = server
@@ -308,6 +326,7 @@ async fn test_tools_execution_with_mock_bookstack() {
         .expect("read_chapter failed");
     assert!(chapter_res.contains("Concurrency"));
     assert!(chapter_res.contains("Rust Guide"));
+    assert!(chapter_res.contains("**Updated**: 2026-11-25T14:00:00Z"));
 
     // 7. list_chapters
     let list_chap_res = server
@@ -316,6 +335,29 @@ async fn test_tools_execution_with_mock_bookstack() {
         .expect("list_chapters failed");
     assert!(list_chap_res.contains("Concurrency"));
     assert!(list_chap_res.contains("ID: 20"));
+    assert!(list_chap_res.contains("Updated: 2026-11-25T14:00:00Z"));
+
+    // 8. list_pages
+    let list_pages_res = server
+        .list_pages(Parameters(ListPagesArgs {
+            sort: Some("-updated_at".to_string()),
+            ..Default::default()
+        }))
+        .await
+        .expect("list_pages failed");
+    assert!(list_pages_res.contains("Rust Guide"));
+    assert!(list_pages_res.contains("Revisions: 3"));
+    assert!(list_pages_res.contains("Updated: 2026-11-26T15:30:00Z (by User #1)"));
+
+    // 9. get_recent_activity (audit-log path)
+    let activity_res = server
+        .get_recent_activity(Parameters(GetRecentActivityArgs::default()))
+        .await
+        .expect("get_recent_activity failed");
+    assert!(activity_res.contains("Recent Activity (Audit Log)"));
+    assert!(activity_res.contains("[page_update]"));
+    assert!(activity_res.contains("Admin (ID: 1)"));
+    assert!(activity_res.contains("Updated section 2"));
 }
 
 #[tokio::test]
@@ -606,11 +648,12 @@ async fn test_main_binary_stdio_initialize() -> anyhow::Result<()> {
     let tools = list_resp["result"]["tools"]
         .as_array()
         .expect("tools array");
-    assert_eq!(tools.len(), 19);
+    assert_eq!(tools.len(), 21);
 
     let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(tool_names.contains(&"search_content"));
     assert!(tool_names.contains(&"read_page"));
+    assert!(tool_names.contains(&"list_pages"));
     assert!(tool_names.contains(&"create_page"));
     assert!(tool_names.contains(&"update_page"));
     assert!(tool_names.contains(&"delete_page"));
@@ -628,6 +671,7 @@ async fn test_main_binary_stdio_initialize() -> anyhow::Result<()> {
     assert!(tool_names.contains(&"create_chapter"));
     assert!(tool_names.contains(&"update_chapter"));
     assert!(tool_names.contains(&"delete_chapter"));
+    assert!(tool_names.contains(&"get_recent_activity"));
 
     // Send tools/call request for read_page
     let call_tool_req = serde_json::json!({
@@ -669,4 +713,60 @@ async fn test_main_binary_stdio_initialize() -> anyhow::Result<()> {
     let _ = child.kill().await;
 
     Ok(())
+}
+
+#[tokio::test]
+async fn test_get_recent_activity_fallback_on_403() {
+    use mcp_bookstack::server::GetRecentActivityArgs;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let base_url = format!("http://127.0.0.1:{}", port);
+
+    tokio::spawn(async move {
+        let mut buf = [0u8; 2048];
+
+        // 1. /api/audit-log -> 403 Forbidden
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let _ = socket.read(&mut buf).await.unwrap();
+        let err_body = r#"{"error":{"code":403,"message":"Forbidden"}}"#;
+        let resp = format!(
+            "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            err_body.len(),
+            err_body
+        );
+        socket.write_all(resp.as_bytes()).await.unwrap();
+        let _ = socket.shutdown().await;
+
+        // 2. Fallback to /api/pages?sort=-updated_at
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let n = socket.read(&mut buf).await.unwrap();
+        let req_str = String::from_utf8_lossy(&buf[..n]);
+        assert!(req_str.contains("/api/pages"));
+        assert!(req_str.contains("sort=-updated_at"));
+        let pages_body = r#"{"data":[{"id":77,"name":"Fallback Page","slug":"fallback-page","updated_at":"2026-11-26T18:00:00Z","updated_by":2}],"total":1}"#;
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            pages_body.len(),
+            pages_body
+        );
+        socket.write_all(resp.as_bytes()).await.unwrap();
+        let _ = socket.shutdown().await;
+    });
+
+    let config = Config::new(base_url, "id", "secret").unwrap();
+    let client = Arc::new(BookStackClient::new(&config));
+    let server = BookStackServer::new(client);
+
+    let res = server
+        .get_recent_activity(Parameters(GetRecentActivityArgs {
+            count: Some(5),
+            activity_type: None,
+        }))
+        .await
+        .expect("get_recent_activity fallback failed");
+
+    assert!(res.contains("Recent Activity (Recently Updated Pages)"));
+    assert!(res.contains("Fallback Page"));
+    assert!(res.contains("Updated: 2026-11-26T18:00:00Z (by User #2)"));
 }

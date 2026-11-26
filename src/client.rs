@@ -1,12 +1,27 @@
 use crate::config::Config;
 use crate::models::{
-    BookDetails, BookListItem, ChapterDetails, ChapterListItem, CreateBookPayload,
+    AuditLogItem, BookDetails, BookListItem, ChapterDetails, ChapterListItem, CreateBookPayload,
     CreateChapterPayload, CreatePagePayload, CreateShelfPayload, ListResponse, PageDetails,
-    SearchResponse, ShelfDetails, ShelfListItem, UpdateBookPayload, UpdateChapterPayload,
-    UpdatePagePayload, UpdateShelfPayload,
+    PageListItem, SearchResponse, ShelfDetails, ShelfListItem, UpdateBookPayload,
+    UpdateChapterPayload, UpdatePagePayload, UpdateShelfPayload,
 };
 use anyhow::{Context, Result, bail};
 use reqwest::Client;
+
+/// Error preserving the HTTP status code returned by the BookStack API.
+#[derive(Debug)]
+pub struct ApiHttpError {
+    pub status: reqwest::StatusCode,
+    pub message: String,
+}
+
+impl std::fmt::Display for ApiHttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for ApiHttpError {}
 
 /// HTTP client wrapper for interacting with the BookStack REST API.
 #[derive(Debug, Clone)]
@@ -87,6 +102,11 @@ impl BookStackClient {
     /// URL helper for an individual shelf endpoint.
     pub fn shelf_url(&self, id: u64) -> String {
         format!("{}/api/shelves/{}", self.base_url, id)
+    }
+
+    /// URL helper for the audit log endpoint.
+    pub fn audit_log_url(&self) -> String {
+        format!("{}/api/audit-log", self.base_url)
     }
 
     /// Search across BookStack content (books, chapters, pages, shelves).
@@ -368,6 +388,102 @@ impl BookStackClient {
             .await
             .with_context(|| format!("Failed to deserialize shelf {} details", id))?;
         Ok(shelf)
+    }
+
+    /// List pages with optional filtering, pagination, and sorting.
+    /// Calls `GET {base_url}/api/pages`.
+    pub async fn list_pages(
+        &self,
+        book_id: Option<u64>,
+        chapter_id: Option<u64>,
+        page: Option<u32>,
+        count: Option<u32>,
+        sort: Option<&str>,
+    ) -> Result<Vec<PageListItem>> {
+        let mut req = self
+            .client
+            .get(self.pages_url())
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header);
+
+        if let Some(bid) = book_id {
+            req = req.query(&[("filter[book_id]", bid.to_string())]);
+        }
+        if let Some(cid) = chapter_id {
+            req = req.query(&[("filter[chapter_id]", cid.to_string())]);
+        }
+        if let Some(p) = page {
+            req = req.query(&[("page", p.to_string())]);
+        }
+        if let Some(c) = count {
+            req = req.query(&[("count", c.to_string())]);
+        }
+        if let Some(s) = sort {
+            req = req.query(&[("sort", s)]);
+        }
+
+        let resp = req
+            .send()
+            .await
+            .context("Failed to send list_pages request")?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("List pages failed with status {}: {}", status, body);
+        }
+
+        let list_resp = resp
+            .json::<ListResponse<PageListItem>>()
+            .await
+            .context("Failed to deserialize pages list response")?;
+        Ok(list_resp.data)
+    }
+
+    /// Fetch system audit log entries (`GET {base_url}/api/audit-log`).
+    /// Requires admin permissions (`SettingsManage` and `UsersManage`) in BookStack >= v24.05.
+    pub async fn get_audit_log(
+        &self,
+        page: Option<u32>,
+        count: Option<u32>,
+        sort: Option<&str>,
+        activity_type: Option<&str>,
+    ) -> Result<ListResponse<AuditLogItem>> {
+        let mut req = self
+            .client
+            .get(self.audit_log_url())
+            .header(reqwest::header::AUTHORIZATION, &self.auth_header);
+
+        if let Some(p) = page {
+            req = req.query(&[("page", p.to_string())]);
+        }
+        if let Some(c) = count {
+            req = req.query(&[("count", c.to_string())]);
+        }
+        if let Some(s) = sort {
+            req = req.query(&[("sort", s)]);
+        }
+        if let Some(t) = activity_type {
+            req = req.query(&[("filter[type]", t)]);
+        }
+
+        let resp = req
+            .send()
+            .await
+            .context("Failed to send audit_log request")?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ApiHttpError {
+                status,
+                message: format!("Audit log request failed with status {}: {}", status, body),
+            }
+            .into());
+        }
+
+        let list_resp = resp
+            .json::<ListResponse<AuditLogItem>>()
+            .await
+            .context("Failed to deserialize audit log response")?;
+        Ok(list_resp)
     }
 
     /// Create a new page.

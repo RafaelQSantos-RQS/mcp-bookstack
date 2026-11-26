@@ -1,3 +1,4 @@
+use mcp_bookstack::client::ApiHttpError;
 use mcp_bookstack::models::*;
 use mcp_bookstack::{BookStackClient, Config};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -544,4 +545,82 @@ async fn test_client_mutation_methods() {
 
     // 12. delete_shelf
     client.delete_shelf(30).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_audit_log_and_list_pages_endpoints() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server_url = format!("http://127.0.0.1:{}", port);
+
+    let config = Config::new(&server_url, "test_id", "test_sec").unwrap();
+    let client = BookStackClient::new(&config);
+
+    assert_eq!(client.audit_log_url(), format!("{}/api/audit-log", server_url));
+
+    tokio::spawn(async move {
+        let mut buf = [0u8; 2048];
+
+        // 1. list_pages with sort
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let n = socket.read(&mut buf).await.unwrap();
+        let req_str = String::from_utf8_lossy(&buf[..n]);
+        assert!(req_str.contains("GET /api/pages"));
+        assert!(req_str.contains("sort=-updated_at"));
+        let pages_json = r##"{"data":[{"id":1,"name":"Recent Page","slug":"recent-page","book_id":10,"updated_at":"2026-11-26T12:00:00Z"}],"total":1}"##;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            pages_json.len(),
+            pages_json
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+        let _ = socket.shutdown().await;
+
+        // 2. get_audit_log success
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let n = socket.read(&mut buf).await.unwrap();
+        let req_str = String::from_utf8_lossy(&buf[..n]);
+        assert!(req_str.contains("GET /api/audit-log"));
+        let audit_json = r##"{"data":[{"id":1,"type":"page_update","user_id":1,"loggable_id":42,"loggable_type":"page","created_at":"2026-11-26T12:00:00Z","user":{"id":1,"name":"Admin"}}],"total":1}"##;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            audit_json.len(),
+            audit_json
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+        let _ = socket.shutdown().await;
+
+        // 3. get_audit_log 403 Forbidden
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let _ = socket.read(&mut buf).await.unwrap();
+        let err_json = r##"{"error":{"code":403,"message":"Forbidden"}}"##;
+        let response = format!(
+            "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            err_json.len(),
+            err_json
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+        let _ = socket.shutdown().await;
+    });
+
+    let pages = client
+        .list_pages(None, None, None, Some(5), Some("-updated_at"))
+        .await
+        .unwrap();
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].name, "Recent Page");
+
+    let audit = client
+        .get_audit_log(None, Some(5), Some("-created_at"), None)
+        .await
+        .unwrap();
+    assert_eq!(audit.data.len(), 1);
+    assert_eq!(audit.data[0].r#type, "page_update");
+
+    let err = client
+        .get_audit_log(None, Some(5), None, None)
+        .await
+        .unwrap_err();
+    let http_err = err.downcast_ref::<ApiHttpError>().expect("Expected ApiHttpError");
+    assert_eq!(http_err.status, reqwest::StatusCode::FORBIDDEN);
 }

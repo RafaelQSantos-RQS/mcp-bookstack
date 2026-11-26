@@ -364,3 +364,71 @@ fn test_mutation_payloads_serialization() {
     assert_eq!(json_s["name"], "Backend Shelf");
     assert_eq!(json_s["books"], serde_json::json!([1, 2, 3]));
 }
+
+#[test]
+fn test_deserialize_audit_log_and_search_timestamps() {
+    let search_json = r##"{
+      "data": [
+        {
+          "id": 84,
+          "book_id": 1,
+          "slug": "a-chapter-for-cats",
+          "name": "A chapter for cats",
+          "created_at": "2021-11-14T15:57:35.000000Z",
+          "updated_at": "2021-11-15T10:20:30.000000Z",
+          "type": "chapter"
+        }
+      ],
+      "total": 1
+    }"##;
+
+    let search: SearchResponse = serde_json::from_str(search_json).unwrap();
+    assert_eq!(
+        search.data[0].created_at.as_deref(),
+        Some("2021-11-14T15:57:35.000000Z")
+    );
+    assert_eq!(
+        search.data[0].updated_at.as_deref(),
+        Some("2021-11-15T10:20:30.000000Z")
+    );
+
+    let audit_json = r##"{
+      "data": [
+        {
+          "id": 5,
+          "type": "page_update",
+          "detail": "Updated content",
+          "user_id": 1,
+          "loggable_id": 42,
+          "loggable_type": "page",
+          "ip": "127.0.0.1",
+          "created_at": "2021-09-29T12:37:27.000000Z",
+          "user": {
+            "id": 1,
+            "name": "Admin",
+            "slug": "admin"
+          }
+        }
+      ],
+      "total": 6088
+    }"##;
+
+    let audit: ListResponse<AuditLogItem> = serde_json::from_str(audit_json).unwrap();
+    assert_eq!(audit.total, Some(6088));
+    assert_eq!(audit.data.len(), 1);
+    let item = &audit.data[0];
+    assert_eq!(item.r#type, "page_update");
+    assert_eq!(item.loggable_type.as_deref(), Some("page"));
+    assert_eq!(item.loggable_id, Some(42));
+    assert_eq!(item.user.as_ref().unwrap().name, "Admin");
+
+    assert_eq!(
+        format_user_summary(Some(&serde_json::json!(1))),
+        Some("User #1".to_string())
+    );
+    assert_eq!(
+        format_user_summary(Some(&serde_json::json!({"id": 2, "name": "Alice"}))),
+        Some("Alice (ID: 2)".to_string())
+    );
+    assert_eq!(format_user_summary(None), None);
+}

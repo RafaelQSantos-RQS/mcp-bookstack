@@ -48,6 +48,61 @@ pub struct SearchResult {
     pub chapter_id: Option<u64>,
     #[serde(default)]
     pub tags: Option<Vec<Tag>>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// User info returned in audit log entries.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AuditLogUser {
+    pub id: u64,
+    pub name: String,
+    #[serde(default)]
+    pub slug: Option<String>,
+}
+
+/// Individual item in the audit log response (`GET /api/audit-log`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct AuditLogItem {
+    pub id: u64,
+    #[serde(rename = "type")]
+    pub r#type: String,
+    #[serde(default)]
+    pub detail: Option<String>,
+    #[serde(default)]
+    pub user_id: Option<u64>,
+    #[serde(default)]
+    pub loggable_id: Option<u64>,
+    #[serde(default)]
+    pub loggable_type: Option<String>,
+    #[serde(default)]
+    pub ip: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub user: Option<AuditLogUser>,
+}
+
+/// Formats a BookStack user reference (`created_by`, `updated_by`, `owned_by`),
+/// which may be an integer ID in listings or a user object in detail views.
+pub fn format_user_summary(val: Option<&serde_json::Value>) -> Option<String> {
+    let val = val?;
+    if let Some(id) = val.as_u64() {
+        return Some(format!("User #{}", id));
+    }
+    if let Some(obj) = val.as_object() {
+        let name = obj.get("name").and_then(|n| n.as_str());
+        let id = obj.get("id").and_then(|i| i.as_u64());
+        return match (name, id) {
+            (Some(n), Some(i)) => Some(format!("{} (ID: {})", n, i)),
+            (Some(n), None) => Some(n.to_string()),
+            (None, Some(i)) => Some(format!("User #{}", i)),
+            (None, None) => None,
+        };
+    }
+    None
 }
 
 /// HTML preview snippets within a search result.

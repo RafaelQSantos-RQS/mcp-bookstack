@@ -8,11 +8,11 @@ use rmcp::{
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
-use crate::client::BookStackClient;
+use crate::client::{ApiHttpError, BookStackClient};
 use crate::models::{
     CreateBookPayload, CreateChapterPayload, CreatePagePayload, CreateShelfPayload, TagInput,
     UpdateBookPayload, UpdateChapterPayload, UpdatePagePayload, UpdateShelfPayload,
-    nullable_integer_schema,
+    format_user_summary, nullable_integer_schema,
 };
 
 fn anyof_nullable_string_schema(_gen: &mut SchemaGenerator) -> Schema {
@@ -386,6 +386,44 @@ pub struct DeleteChapterArgs {
     pub confirm: bool,
 }
 
+/// Arguments for `list_pages` tool.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct ListPagesArgs {
+    /// Optional book ID to filter pages by parent book
+    #[serde(default)]
+    #[schemars(schema_with = "nullable_integer_schema")]
+    pub book_id: Option<u64>,
+    /// Optional chapter ID to filter pages by parent chapter
+    #[serde(default)]
+    #[schemars(schema_with = "nullable_integer_schema")]
+    pub chapter_id: Option<u64>,
+    /// Optional page number for pagination
+    #[serde(default)]
+    #[schemars(schema_with = "nullable_integer_schema")]
+    pub page: Option<u32>,
+    /// Optional number of items per page
+    #[serde(default)]
+    #[schemars(schema_with = "nullable_integer_schema")]
+    pub count: Option<u32>,
+    /// Optional sort field with direction prefix (e.g. "-updated_at", "+name")
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub sort: Option<String>,
+}
+
+/// Arguments for `get_recent_activity` tool.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct GetRecentActivityArgs {
+    /// Number of recent activity items to retrieve (default: 10, max: 100)
+    #[serde(default)]
+    #[schemars(schema_with = "nullable_integer_schema")]
+    pub count: Option<u32>,
+    /// Optional filter for activity event type (e.g. "page_update", "page_create", "book_create")
+    #[serde(default)]
+    #[schemars(schema_with = "anyof_nullable_string_schema")]
+    pub activity_type: Option<String>,
+}
+
 /// MCP Server implementation for BookStack.
 #[derive(Clone)]
 pub struct BookStackServer {
@@ -477,6 +515,15 @@ impl BookStackServer {
                 if let Some(ref url) = item.url {
                     out.push_str(&format!("- **URL**: {}\n", url));
                 }
+                append_audit_metadata(
+                    &mut out,
+                    "- ",
+                    true,
+                    item.created_at.as_deref(),
+                    item.updated_at.as_deref(),
+                    None,
+                    None,
+                );
                 if let Some(ref preview) = item.preview_html
                     && let Some(ref content) = preview.content
                 {
@@ -538,6 +585,15 @@ impl BookStackServer {
                 {
                     out.push_str(&format!("  - Description: {}\n", desc.trim()));
                 }
+                append_audit_metadata(
+                    &mut out,
+                    "  - ",
+                    false,
+                    b.created_at.as_deref(),
+                    b.updated_at.as_deref(),
+                    b.created_by.as_ref(),
+                    b.updated_by.as_ref(),
+                );
             }
         }
 
@@ -567,6 +623,15 @@ impl BookStackServer {
         {
             out.push_str(&format!("- **Description**: {}\n", desc.trim()));
         }
+        append_audit_metadata(
+            &mut out,
+            "- ",
+            true,
+            book.created_at.as_deref(),
+            book.updated_at.as_deref(),
+            book.created_by.as_ref(),
+            book.updated_by.as_ref(),
+        );
 
         out.push_str("\n## Contents\n\n");
         if let Some(ref contents) = book.contents {
@@ -648,6 +713,15 @@ impl BookStackServer {
                 {
                     out.push_str(&format!("  - Description: {}\n", desc.trim()));
                 }
+                append_audit_metadata(
+                    &mut out,
+                    "  - ",
+                    false,
+                    s.created_at.as_deref(),
+                    s.updated_at.as_deref(),
+                    s.created_by.as_ref(),
+                    s.updated_by.as_ref(),
+                );
             }
         }
 
@@ -678,6 +752,15 @@ impl BookStackServer {
         {
             out.push_str(&format!("- **Description**: {}\n", desc.trim()));
         }
+        append_audit_metadata(
+            &mut out,
+            "- ",
+            true,
+            chapter.created_at.as_deref(),
+            chapter.updated_at.as_deref(),
+            chapter.created_by.as_ref(),
+            chapter.updated_by.as_ref(),
+        );
 
         out.push_str("\n## Pages\n\n");
         if let Some(ref pages) = chapter.pages {
@@ -728,6 +811,15 @@ impl BookStackServer {
                 {
                     out.push_str(&format!("  - Description: {}\n", desc.trim()));
                 }
+                append_audit_metadata(
+                    &mut out,
+                    "  - ",
+                    false,
+                    c.created_at.as_deref(),
+                    c.updated_at.as_deref(),
+                    c.created_by.as_ref(),
+                    c.updated_by.as_ref(),
+                );
             }
         }
 
@@ -1092,6 +1184,192 @@ impl BookStackServer {
             "# Shelf Deleted Successfully\n\nShelf ID {} has been deleted and moved to the recycle bin.\n",
             args.shelf_id
         ))
+    }
+
+    /// List pages in the BookStack instance with optional filtering, sorting, and audit timestamps.
+    #[tool(
+        name = "list_pages",
+        description = "List pages in BookStack with optional book/chapter filters, sorting (e.g. '-updated_at'), and audit timestamps"
+    )]
+    pub async fn list_pages(
+        &self,
+        params: Parameters<ListPagesArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let pages = self
+            .client
+            .list_pages(
+                args.book_id,
+                args.chapter_id,
+                args.page,
+                args.count,
+                args.sort.as_deref(),
+            )
+            .await
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+        let mut out = String::from("# Pages\n\n");
+        if pages.is_empty() {
+            out.push_str("No pages found.\n");
+        } else {
+            for p in &pages {
+                let mut meta = format!("ID: {}, Slug: `{}`", p.id, p.slug);
+                if let Some(bid) = p.book_id {
+                    meta.push_str(&format!(", Book ID: {}", bid));
+                }
+                if let Some(cid) = p.chapter_id {
+                    meta.push_str(&format!(", Chapter ID: {}", cid));
+                }
+                if let Some(rev) = p.revision_count {
+                    meta.push_str(&format!(", Revisions: {}", rev));
+                }
+                out.push_str(&format!("- **{}** ({})\n", p.name, meta));
+                append_audit_metadata(
+                    &mut out,
+                    "  - ",
+                    false,
+                    p.created_at.as_deref(),
+                    p.updated_at.as_deref(),
+                    p.created_by.as_ref(),
+                    p.updated_by.as_ref(),
+                );
+            }
+        }
+
+        Ok(out)
+    }
+
+    /// Get recent activity and audit events from BookStack.
+    /// Uses `/api/audit-log` when admin permissions are available, falling back to recently updated pages otherwise.
+    #[tool(
+        name = "get_recent_activity",
+        description = "Get recent activity and audit events from BookStack (uses audit-log for admins or falls back to recently updated pages)"
+    )]
+    pub async fn get_recent_activity(
+        &self,
+        params: Parameters<GetRecentActivityArgs>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let args = params.0;
+        let count = args.count.unwrap_or(10).clamp(1, 100);
+
+        match self
+            .client
+            .get_audit_log(
+                None,
+                Some(count),
+                Some("-created_at"),
+                args.activity_type.as_deref(),
+            )
+            .await
+        {
+            Ok(resp) => {
+                let mut out = String::from("# Recent Activity (Audit Log)\n\n");
+                if let Some(total) = resp.total {
+                    out.push_str(&format!("*Total audit events: {}*\n\n", total));
+                }
+                if resp.data.is_empty() {
+                    out.push_str("No recent activity found.\n");
+                } else {
+                    for entry in &resp.data {
+                        let actor = entry
+                            .user
+                            .as_ref()
+                            .map(|u| format!("{} (ID: {})", u.name, u.id))
+                            .or_else(|| entry.user_id.map(|id| format!("User #{}", id)))
+                            .unwrap_or_else(|| "Unknown user".to_string());
+
+                        let target = match (entry.loggable_type.as_deref(), entry.loggable_id) {
+                            (Some(t), Some(id)) => format!("{} #{}", t, id),
+                            (Some(t), None) => t.to_string(),
+                            _ => "system".to_string(),
+                        };
+
+                        let timestamp = entry.created_at.as_deref().unwrap_or("unknown time");
+                        out.push_str(&format!(
+                            "- **[{}]** `{}` by **{}** at {}\n",
+                            entry.r#type, target, actor, timestamp
+                        ));
+                        if let Some(ref detail) = entry.detail
+                            && !detail.trim().is_empty()
+                        {
+                            out.push_str(&format!("  - Detail: {}\n", detail.trim()));
+                        }
+                    }
+                }
+                Ok(out)
+            }
+            Err(err) => {
+                let is_fallback_status = err.downcast_ref::<ApiHttpError>().is_some_and(|e| {
+                    e.status == reqwest::StatusCode::FORBIDDEN
+                        || e.status == reqwest::StatusCode::NOT_FOUND
+                });
+
+                if !is_fallback_status {
+                    return Err(rmcp::ErrorData::internal_error(err.to_string(), None));
+                }
+
+                let pages = self
+                    .client
+                    .list_pages(None, None, None, Some(count), Some("-updated_at"))
+                    .await
+                    .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+                let mut out = String::from(
+                    "# Recent Activity (Recently Updated Pages)\n\n\
+                     *Note: `/api/audit-log` requires admin permissions; showing most recently updated pages instead.*\n\n",
+                );
+                if pages.is_empty() {
+                    out.push_str("No recently updated pages found.\n");
+                } else {
+                    for p in &pages {
+                        out.push_str(&format!(
+                            "- **{}** (Page ID: {}, Slug: `{}`)\n",
+                            p.name, p.id, p.slug
+                        ));
+                        append_audit_metadata(
+                            &mut out,
+                            "  - ",
+                            false,
+                            p.created_at.as_deref(),
+                            p.updated_at.as_deref(),
+                            p.created_by.as_ref(),
+                            p.updated_by.as_ref(),
+                        );
+                    }
+                }
+                Ok(out)
+            }
+        }
+    }
+}
+
+/// Appends formatted `Updated` and `Created` audit metadata lines when available.
+fn append_audit_metadata(
+    out: &mut String,
+    prefix: &str,
+    bold: bool,
+    created_at: Option<&str>,
+    updated_at: Option<&str>,
+    created_by: Option<&serde_json::Value>,
+    updated_by: Option<&serde_json::Value>,
+) {
+    let format_line = |label: &str, ts: Option<&str>, user: Option<String>| -> Option<String> {
+        match (ts, user) {
+            (Some(t), Some(u)) => Some(format!("{label}: {t} (by {u})")),
+            (Some(t), None) => Some(format!("{label}: {t}")),
+            (None, Some(u)) => Some(format!("{label}: by {u}")),
+            (None, None) => None,
+        }
+    };
+
+    let updated_label = if bold { "**Updated**" } else { "Updated" };
+    let created_label = if bold { "**Created**" } else { "Created" };
+
+    if let Some(line) = format_line(updated_label, updated_at, format_user_summary(updated_by)) {
+        out.push_str(&format!("{}{}\n", prefix, line));
+    }
+    if let Some(line) = format_line(created_label, created_at, format_user_summary(created_by)) {
+        out.push_str(&format!("{}{}\n", prefix, line));
     }
 }
 
